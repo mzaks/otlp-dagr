@@ -4,6 +4,8 @@
 package fixture
 
 import (
+	"encoding/binary"
+
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
@@ -124,4 +126,122 @@ func TracesWithLinks(n int) ptrace.Traces {
 		}
 	}
 	return td
+}
+
+// ── a corpus for tail sampling ───────────────────────────────────────────────
+
+// Sampling is a synthetic workload shaped like what a tail sampler actually faces:
+// traces whose spans arrive in DIFFERENT batches, so no single batch holds a whole
+// trace and a decision cannot be made from one record.
+//
+// It is generated rather than seeded because `seed` gives every span its own random
+// trace id — perfect for measuring encode and decode, useless for grouping.
+type Sampling struct {
+	Batches   []ptrace.Traces
+	TraceIDs  [][16]byte
+	Errors    map[[16]byte]bool // traces carrying at least one ERROR span
+	Slow      map[[16]byte]bool // traces whose span set exceeds SlowNanos
+	SpansPer  map[[16]byte]int
+	LastNano  map[[16]byte]uint64
+	TotalSpan int
+}
+
+// SlowNanos is the duration above which Sampling marks a trace slow.
+const SlowNanos uint64 = 500_000_000
+
+// NewSampling builds nTraces traces of 2..4 spans each, round-robined across nBatches
+// batches so a trace's spans are split across them. Deterministic.
+//
+// Roughly one trace in thirteen errors and one in seventeen is slow, so a policy that
+// keeps errors and slow traces keeps ~13% of them. The ratio is chosen to be realistic
+// rather than convenient: tail sampling is worth building because the kept fraction is
+// small, and a corpus that sampled half of everything would flatter it.
+func NewSampling(nTraces, nBatches int) *Sampling {
+	const base uint64 = 1_758_000_000_000_000_000
+	s := &Sampling{
+		Errors:   map[[16]byte]bool{},
+		Slow:     map[[16]byte]bool{},
+		SpansPer: map[[16]byte]int{},
+		LastNano: map[[16]byte]uint64{},
+	}
+
+	type pending struct {
+		tid      [16]byte
+		name     string
+		start    uint64
+		dur      uint64
+		isError  bool
+		batchIdx int
+	}
+	var all []pending
+
+	for i := 0; i < nTraces; i++ {
+		// Injective in i, and it has to be: an id built byte-wise from `i` wraps at 256
+		// and silently merges trace 300 into trace 44. The benchmark found that by
+		// reporting 256 traces for a 400-trace corpus; the test below now gates it.
+		var tid [16]byte
+		binary.BigEndian.PutUint64(tid[0:8], uint64(i)*0x9E3779B97F4A7C15)
+		binary.BigEndian.PutUint64(tid[8:16], uint64(i)+1)
+		s.TraceIDs = append(s.TraceIDs, tid)
+		nSpans := 2 + i%3
+		isError := i%13 == 0
+		isSlow := i%17 == 0
+		start := base + uint64(i)*1_000_000
+		for k := 0; k < nSpans; k++ {
+			dur := uint64(1_000_000) * uint64(1+k)
+			if isSlow && k == nSpans-1 {
+				dur = SlowNanos + 1_000_000
+			}
+			all = append(all, pending{
+				tid:      tid,
+				name:     "span",
+				start:    start + uint64(k)*100_000,
+				dur:      dur,
+				isError:  isError && k == nSpans-1,
+				batchIdx: (i + k) % nBatches,
+			})
+			s.SpansPer[tid]++
+			if end := start + uint64(k)*100_000 + dur; end > s.LastNano[tid] {
+				s.LastNano[tid] = end
+			}
+		}
+		if isError {
+			s.Errors[tid] = true
+		}
+		if isSlow {
+			s.Slow[tid] = true
+		}
+	}
+	s.TotalSpan = len(all)
+
+	s.Batches = make([]ptrace.Traces, nBatches)
+	for b := range s.Batches {
+		td := ptrace.NewTraces()
+		rs := td.ResourceSpans().AppendEmpty()
+		rs.Resource().Attributes().PutStr("service.name", "checkout-api")
+		ss := rs.ScopeSpans().AppendEmpty()
+		ss.Scope().SetName("tail-sampling-corpus")
+		for _, p := range all {
+			if p.batchIdx != b {
+				continue
+			}
+			sp := ss.Spans().AppendEmpty()
+			sp.SetTraceID(pcommon.TraceID(p.tid))
+			var sid pcommon.SpanID
+			binary.BigEndian.PutUint64(sid[:], p.start)
+			sp.SetSpanID(sid)
+			sp.SetName(p.name)
+			sp.SetKind(ptrace.SpanKindServer)
+			sp.SetStartTimestamp(pcommon.Timestamp(p.start))
+			sp.SetEndTimestamp(pcommon.Timestamp(p.start + p.dur))
+			if p.isError {
+				sp.Status().SetCode(ptrace.StatusCodeError)
+			} else {
+				sp.Status().SetCode(ptrace.StatusCodeOk)
+			}
+			sp.Attributes().PutStr("http.request.method", "GET")
+		}
+		s.Batches[b] = td
+	}
+	return s
 }
