@@ -109,6 +109,19 @@ func NewBuilder() *Builder { return &Builder{b: d.NewOtlpTracesBuilder()} }
 
 func (w *Builder) Build(td ptrace.Traces) []byte { return w.b.Build(toValue(td)) }
 
+// BuildAppend appends the encoded batch to dst and returns the extended slice — the Go
+// analogue of Rust's write_into. An exporter that keeps one Builder and one dst reuses
+// both, so the serialize step allocates nothing at steady state.
+func (w *Builder) BuildAppend(dst []byte, td ptrace.Traces) []byte {
+	return w.b.BuildAppend(dst, toValue(td))
+}
+
+// BuildValueAppend is BuildAppend against an already-built value tree, so a benchmark can
+// separate the serializer from this bridge's tree construction.
+func (w *Builder) BuildValueAppend(dst []byte, v d.TracesData) []byte {
+	return w.b.BuildAppend(dst, v)
+}
+
 func toValue(td ptrace.Traces) d.TracesData {
 	rss := td.ResourceSpans()
 	outRS := make([]d.ResourceSpans, 0, rss.Len())

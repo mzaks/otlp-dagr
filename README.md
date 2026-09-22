@@ -144,34 +144,45 @@ numbers; Go is worse. Either way the conclusion is unchanged and now measured in
 **a receiver that converts a Dagr batch into pdata is worse off than one that stayed on
 protobuf.** The win exists only for a consumer that keeps the buffer.
 
-### Encode — the Rust result does NOT transfer to Go
+### Encode — the serializer is fixed; the bridge is now the cost
 
 ```
                               ns/op        B/op   allocs/op
-Encode_ProtoMarshal           79374      237568           1
-Encode_DagrDirect            423306     1809127        6459
-Encode_DagrDirectReused      384997     1285744        6441
-  ├─ DagrTreeOnly            147495      527042        5628   (bridge: pdata → value tree)
-  └─ DagrSerializeOnly       287180     1282079         831   (Dagr: value tree → bytes)
+Encode_ProtoMarshal           78003      237579           1
+Encode_DagrDirect            338252     1280835        5647   one-shot builder
+Encode_DagrDirectAppend      277692      528324        5633   reused builder + dst
+  ├─ DagrTreeOnly            144763      527042        5628   bridge: pdata → value tree
+  └─ DagrSerializeAppend     136560         753           0   Dagr: value tree → bytes
 ```
 
-In the Rust benchmark the direct builder encodes this batch **1.9× faster than
-protobuf**. In Go it is **5.3× slower**. Two distinct causes:
+The first version of this benchmark found the Dagr serializer doing **831 allocations
+and 1.28 MB per batch**. Two fixes in Dagr (`spec/32 §1.46–1.47`) took it to **zero**:
+
+- **`ToOpts` is gone from plain arrays.** Go had one array store per shape taking
+  `[]Opt[T]` so it could serve `arrayWithOptionals`; a plain `[T]` was converted per
+  array, per encode — ~800 of the 831 allocations. The `*Plain` twins take `[]T`.
+- **`BuildAppend` replaces the copy-out.** `Build` ended in `MakeData()`, allocating and
+  copying the whole 228 KB record. `BuildAppend(dst, root)` — the Go analogue of Rust's
+  `write_into` — appends into a caller-owned slice.
+
+**Serializing an OTLP batch now allocates nothing**, and the step went 287 µs → 137 µs
+(2.10×). End to end the gap against `MarshalTraces` narrowed from **5.3× to 3.56×**.
+
+Two things still stand between Go and the Rust result:
 
 1. **pdata gives protobuf an unbeatable marshal.** `pdata` *is* the generated protobuf
    structs, so `MarshalTraces` is a direct walk into one pre-sized buffer — **1
    allocation** for the whole 234 KB batch. There is no "convert to wire form" step to
    beat, which is exactly the advantage the Rust comparison (prost, from an owned tree)
    did not have to face.
-2. **Dagr-Go's direct builder is allocation-heavy.** Even against a pre-built value
-   tree it does 831 allocations and 1.28 MB per batch — `dagr.ToOpts` wraps every node
-   array in a freshly allocated `[]Opt[T]`, and the builder's buffer growth and
-   `MakeData` copy add the rest. The Rust direct builder writes into a caller-owned
-   buffer with essentially none of this (`write_into`, 61 µs / 2.01× protobuf).
+2. **This bridge's value tree is now the whole remaining cost** — 52% of the time and
+   99.9% of the allocations. Closing it means a builder that walks pdata accessors
+   straight to bytes with no intermediate tree; that work is in `otlp-dagr`, not Dagr.
 
-The bridge's own tree construction (147 µs) is pure overhead that a direct builder
-walking pdata accessors straight to bytes would not pay — but even removing it entirely,
-the serializer alone is 3.6× protobuf's marshal.
+(One idea was tried and reverted: typed payload slots on the generated union value,
+instead of Go boxing every string into an `any`. It cut the tree's allocations 2.4× and
+ran 29–47% *slower*, because the slots widen the value from ~24 to ~80 bytes and the tree
+is copied per element. `spec/32 §1.48`.)
 
 ## What this says about the next step
 
@@ -182,11 +193,12 @@ the serializer alone is 3.6× protobuf's marshal.
 | **Reads, large-array sweep** | **fixed** — 9.3× via the new `All()` / `Iter()`, linear scaling, 0 allocs. `At(i)` in a loop is still O(n²) by construction. |
 | **Validated open** | 3.2× a protobuf decode. Fine in-process, a real cost on an untrusted hop. |
 | **Materialise to pdata** | loses, as designed. Do not build a pipeline that does this. |
-| **Encode from pdata** | **loses today, 5.3×.** Needs a pdata-walking direct builder and allocation work in Dagr-Go's builder before the Rust encode claim can be repeated here. |
+| **Encode from pdata** | **loses, 3.56× — down from 5.3×.** The Dagr serializer is fixed (0 allocs, 2.10× faster); what remains is this bridge's value tree. |
 
 So the §14 step-1 gate — "if this does not win decisively on allocations, stop" — is
-**passed**; step 2 (the lazy array iterator) is **done**; and one follow-up remains: the
-direct builder's allocation profile (§10.2.1 in the Dagr repo).
+**passed**; step 2 (the lazy array iterator) is **done**; step 3 (the direct builder's
+allocation profile) is **half done** — the Dagr serializer allocates nothing now, and the
+remaining work is a pdata-walking builder here, with no intermediate value tree.
 
 ## Licence
 

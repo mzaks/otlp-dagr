@@ -625,3 +625,37 @@ func BenchmarkScaling_DagrAll(b *testing.B) {
 		})
 	}
 }
+
+// ── encode without the copy ──────────────────────────────────────────────────
+//
+// Build copies the finished record out of the builder (MakeData). BuildAppend appends
+// it to a caller-owned slice instead, so an exporter that keeps one builder and one
+// destination buffer reuses both and the serialize step allocates nothing.
+
+func BenchmarkEncode_DagrSerializeAppend(b *testing.B) {
+	w := pdatabridge.NewBuilder()
+	dst := make([]byte, 0, len(dagrBytes)+64)
+	if got := w.BuildValueAppend(dst[:0], prebuiltTree); !bytes.Equal(got, dagrBytes) {
+		b.Fatalf("BuildAppend diverged: %d B vs %d B", len(got), len(dagrBytes))
+	}
+	b.SetBytes(int64(len(dagrBytes)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		dst = w.BuildValueAppend(dst[:0], prebuiltTree)
+		sink += uint64(len(dst))
+	}
+}
+
+func BenchmarkEncode_DagrDirectAppend(b *testing.B) {
+	w := pdatabridge.NewBuilder()
+	dst := make([]byte, 0, len(dagrBytes)+64)
+	if got := w.BuildAppend(dst[:0], traces); !bytes.Equal(got, dagrBytes) {
+		b.Fatalf("BuildAppend diverged: %d B vs %d B", len(got), len(dagrBytes))
+	}
+	b.SetBytes(int64(len(dagrBytes)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		dst = w.BuildAppend(dst[:0], traces)
+		sink += uint64(len(dst))
+	}
+}

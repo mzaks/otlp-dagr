@@ -915,16 +915,16 @@
   "library_hash": "sha256:2507066ffe8070e0911f52d8c820eedc99f094a3bf1a853998224fa3ff739278",
   "outputs": {
     "go/gen/dagr/reader.go": "sha256:52241688c1535ab8ea98b014aebebe26e8a3baab174840afe07ea0d4e0231363",
-    "go/gen/dagr/writer.go": "sha256:018d19dfcd87ca0b7194b99665c6f05be4cb6ecab3f8f848023e04bcb2634d36",
+    "go/gen/dagr/writer.go": "sha256:177323e3e69ee9d850d5d49be896715e94546c0cfc3777cc8df9fceb1394b731",
     "go/gen/go.mod": "sha256:cf4447fba3d4bdf7cc7051b546fe23502726ae6bd31a658b98c6982652c77206",
     "go/gen/otlp_traces.go": "sha256:bdc6f4df0855ca7c21ec782fd36947747b58b91ad439ccac5412ccd5c4061db0",
     "go/gen/otlp_traces_arena.go": "sha256:5014b70224aa9aa15abb9c555e7bf228bba0e5f367a107456cc1907ab03d7004",
-    "go/gen/otlp_traces_serde.go": "sha256:caaf633bc166073652b1c48c943bc5808af59dbb19ed6ebb76ab40d5e8192afa",
-    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:940fa0e44f76283693b84fb65b43ad2b2a9d0d16648bde117362694f2fa17a11"
+    "go/gen/otlp_traces_serde.go": "sha256:8ab74d3845290b7a142d6338a3f8d26be3bf72661be1cdde736c460929e6f6fb",
+    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:0e27bcb4d71121496c72e022631731fa038fe09a53ee846860d6647daadb6ea6"
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-22T11:38:30.086982+00:00",
+    "generated_at": "2026-09-22T12:07:28.827040+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.0"
   },
