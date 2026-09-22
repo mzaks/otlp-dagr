@@ -77,3 +77,51 @@ func TracesN(n int) ptrace.Traces {
 	}
 	return td
 }
+
+// TracesWithLinks is the same batch with a span link on every third span, and a
+// second link (with its own attributes) on every ninth.
+//
+// It is deliberately NOT part of the seed: `seed` is a byte-for-byte port of the Rust
+// benchmark's `otlp_seed()`, and adding a field to it would silently make the Go and
+// Rust numbers incomparable. Links only need to exist for the encode path to be gated
+// on them, which is what this is for.
+func TracesWithLinks(n int) ptrace.Traces {
+	td := TracesN(n)
+	i := 0
+	for r := 0; r < td.ResourceSpans().Len(); r++ {
+		rs := td.ResourceSpans().At(r)
+		for s := 0; s < rs.ScopeSpans().Len(); s++ {
+			spans := rs.ScopeSpans().At(s).Spans()
+			for k := 0; k < spans.Len(); k++ {
+				sp := spans.At(k)
+				if i%3 != 0 {
+					i++
+					continue
+				}
+				lk := sp.Links().AppendEmpty()
+				var tid pcommon.TraceID
+				var sid pcommon.SpanID
+				for b := range tid {
+					tid[b] = byte(i*7 + b)
+				}
+				for b := range sid {
+					sid[b] = byte(i*13 + b)
+				}
+				lk.SetTraceID(tid)
+				lk.SetSpanID(sid)
+				lk.TraceState().FromRaw("sampled=1")
+				lk.SetFlags(uint32(i%256) | 0x100)
+				lk.Attributes().PutStr("link.kind", "follows_from")
+				if i%9 == 0 {
+					l2 := sp.Links().AppendEmpty()
+					l2.SetTraceID(tid)
+					l2.Attributes().PutInt("link.index", int64(i))
+					l2.Attributes().PutBool("link.remote", i%2 == 0)
+					l2.SetDroppedAttributesCount(uint32(i % 5))
+				}
+				i++
+			}
+		}
+	}
+	return td
+}

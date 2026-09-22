@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 
 	g "otlptraces"
 
@@ -715,13 +716,10 @@ func BenchmarkEncode_DagrReuseAppend(b *testing.B) {
 // The scratch builder still materialises a value tree for the whole batch (sized by a
 // counting pass, then filled, then serialized — pdata walked twice and the tree once).
 // StreamBuilder walks pdata ONCE: each span's value struct is built on the stack,
-// written immediately through the generated Put{N}, and the scratch behind its attribute
-// and event slices is reused by the next span.
+// written immediately through the generated Put{N}, and the scratch behind its attribute,
+// event and link slices is reused by the next span.
 
 func TestStreamMatches(t *testing.T) {
-	if pdatabridge.HasLinks(traces) {
-		t.Skip("stream builder does not cover links")
-	}
 	w := pdatabridge.NewStreamBuilder()
 	// twice — the second call is the one that reuses every piece of scratch
 	for i := 0; i < 2; i++ {
@@ -729,16 +727,61 @@ func TestStreamMatches(t *testing.T) {
 			t.Fatalf("pass %d: stream builder diverged: %d B vs %d B", i, len(got), len(dagrBytes))
 		}
 	}
-	// interleave a differently-shaped batch, to catch scratch that outlived its span
+	// interleave differently-shaped batches, to catch scratch that outlived its span.
+	// The linked batch matters twice over: the seeded corpus has no span links, so
+	// without it the streaming link path would be untested — and an encoder that
+	// silently drops links is the worst kind of fast.
 	small := fixture.TracesN(7)
 	smallWant := pdatabridge.ToBytes(small)
+	linked := fixture.TracesWithLinks(64)
+	linkedWant := pdatabridge.ToBytes(linked)
 	for i := 0; i < 3; i++ {
 		if got := w.BuildAppend(nil, small); !bytes.Equal(got, smallWant) {
 			t.Fatalf("small pass %d diverged", i)
 		}
+		if got := w.BuildAppend(nil, linked); !bytes.Equal(got, linkedWant) {
+			t.Fatalf("linked pass %d diverged: %d B vs %d B", i, len(got), len(linkedWant))
+		}
 		if got := w.BuildAppend(nil, traces); !bytes.Equal(got, dagrBytes) {
 			t.Fatalf("large pass %d diverged", i)
 		}
+	}
+}
+
+// TestStreamLinksRoundTrip closes the loop on links: the streamed bytes must read back
+// as the same links, not merely match another encoder that could share the same bug.
+func TestStreamLinksRoundTrip(t *testing.T) {
+	in := fixture.TracesWithLinks(128)
+	buf := pdatabridge.NewStreamBuilder().BuildAppend(nil, in)
+	out, err := pdatabridge.ToTraces(buf)
+	if err != nil {
+		t.Fatalf("to traces: %v", err)
+	}
+	wantReq := ptraceotlp.NewExportRequestFromTraces(in)
+	gotReq := ptraceotlp.NewExportRequestFromTraces(out)
+	wb, err := wantReq.MarshalProto()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gb, err := gotReq.MarshalProto()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(wb, gb) {
+		t.Fatalf("links did not survive the stream round trip: %d B in, %d B out", len(wb), len(gb))
+	}
+	links := 0
+	for r := 0; r < out.ResourceSpans().Len(); r++ {
+		rs := out.ResourceSpans().At(r)
+		for s := 0; s < rs.ScopeSpans().Len(); s++ {
+			sp := rs.ScopeSpans().At(s).Spans()
+			for k := 0; k < sp.Len(); k++ {
+				links += sp.At(k).Links().Len()
+			}
+		}
+	}
+	if links == 0 {
+		t.Fatal("the linked fixture produced no links — the gate would pass vacuously")
 	}
 }
 

@@ -29,6 +29,9 @@ type StreamBuilder struct {
 	spanKV  []d.KeyValue // one span's attributes
 	evKV    []d.KeyValue // all of one span's event attributes
 	events  []d.Event    // one span's events
+	lkKV    []d.KeyValue // all of one span's link attributes
+	links   []d.Link     // one span's links
+	linkIDs []byte       // one span's link trace + span ids, 24 bytes each
 	otherKV []d.KeyValue // resource / scope attributes (once per batch)
 	ids     [32]byte     // one span's trace + span + parent ids
 }
@@ -204,6 +207,42 @@ func (w *StreamBuilder) spanValue(src ptrace.Span) d.Span {
 		out.Events = optSlice(w.events)
 	}
 
+	if lks := src.Links(); lks.Len() > 0 {
+		total := 0
+		for k := 0; k < lks.Len(); k++ {
+			total += lks.At(k).Attributes().Len()
+		}
+		w.links = fit(w.links, lks.Len())
+		w.lkKV = fit(w.lkKV, total)
+		w.linkIDs = fit(w.linkIDs, lks.Len()*24)
+		used, idp := 0, 0
+		for k := 0; k < lks.Len(); k++ {
+			l := lks.At(k)
+			lk := d.Link{
+				TraceState:             nonEmpty(l.TraceState().AsRaw()),
+				DroppedAttributesCount: nonZeroU32(l.DroppedAttributesCount()),
+			}
+			if tid := l.TraceID(); !tid.IsEmpty() {
+				idp += copy(w.linkIDs[idp:], tid[:])
+				lk.TraceID = some(w.linkIDs[idp-len(tid) : idp])
+			}
+			if sid := l.SpanID(); !sid.IsEmpty() {
+				idp += copy(w.linkIDs[idp:], sid[:])
+				lk.SpanID = some(w.linkIDs[idp-len(sid) : idp])
+			}
+			if f := l.Flags(); f != 0 {
+				lk.Flags = some(f)
+			}
+			if a := l.Attributes(); a.Len() > 0 {
+				got := fillAttrs(w.lkKV[used:used+a.Len()], a)
+				used += len(got)
+				lk.Attributes = optSlice(got)
+			}
+			w.links[k] = lk
+		}
+		out.Links = optSlice(w.links)
+	}
+
 	if st := src.Status(); st.Code() != ptrace.StatusCodeUnset || st.Message() != "" {
 		out.Status = some(d.Status{
 			Message: nonEmpty(st.Message()),
@@ -211,22 +250,4 @@ func (w *StreamBuilder) spanValue(src ptrace.Span) d.Span {
 		})
 	}
 	return out
-}
-
-// Links are not streamed yet: the seeded corpus has none, and a wrong guess would be
-// silently wrong rather than loudly. A batch carrying links must use the scratch builder.
-func HasLinks(td ptrace.Traces) bool {
-	rss := td.ResourceSpans()
-	for i := 0; i < rss.Len(); i++ {
-		sss := rss.At(i).ScopeSpans()
-		for j := 0; j < sss.Len(); j++ {
-			sps := sss.At(j).Spans()
-			for k := 0; k < sps.Len(); k++ {
-				if sps.At(k).Links().Len() > 0 {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
