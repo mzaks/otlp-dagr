@@ -3,11 +3,13 @@
 OTLP traces as a [Dagr](https://codeberg.org/mzaks/dagr) data graph, and the
 measurements that say whether that is worth doing.
 
-This implements steps 1–3 and 6 of `spec/38-otlp-on-dagr.md` in the Dagr repo: the
+This implements steps 1–3, 6 and 7 of `spec/38-otlp-on-dagr.md` in the Dagr repo: the
 schema, a `pdata` bridge, the benchmark that decides the rest — **Dagr's Go lazy
 accessors against `ptrace.Unmarshal` + pdata accessors, in nanoseconds and in
-allocations** — and a **collector exporter/receiver pair** that writes and reads an
-append-only Dagr spool, built with `ocb` and round-tripped through a real collector.
+allocations** — a **collector exporter/receiver pair** that writes and reads an
+append-only Dagr spool, built with `ocb` and round-tripped through a real collector, and
+the **store** that reads that spool backwards: a crash ring and a tail sampler whose
+buffer is the file rather than the heap.
 
 ## Layout
 
@@ -20,6 +22,7 @@ go/                see go/README.md
   spool/           the spool file: append, read forward/newest-first, check the tail
   exporter/        dagrfileexporter — pdata in, one Dagr record per batch
   receiver/        dagrfilereceiver  — the spool back into an unmodified pipeline
+  store/           the query surface: crash ring, retention, tail sampling
   cmd/otlpdagrctl/ the round-trip harness (send / spool / verify)
 ocb/               collector builder manifest, two pipeline configs, roundtrip.sh
 ```
@@ -28,6 +31,7 @@ ocb/               collector builder manifest, two pipeline configs, roundtrip.s
 ./regen.sh                                            # regenerate go/gen
 cd go && go test ./...                                # every gate
 cd go && go test ./bench -bench . -benchmem -benchtime 500x
+cd go && go test ./store -bench . -benchtime 2s        # the store's numbers
 ./ocb/roundtrip.sh                                    # build a collector, round trip through it
 ```
 
@@ -367,6 +371,104 @@ The fast path is the opposite shape — keep the buffer, read the fields you nee
 type flowing between collector components is pdata. It is a standalone service reading
 the spool directly, and `spool.Reader` is the whole API it needs.
 
+## The store: the crash ring and the tail-sampling spool
+
+`spec/38 §6.2` and `§6.3`, and the half of the plan a collector pipeline cannot host.
+
+The exporter/receiver pair above speaks Dagr at the collector's *edges*, but the type
+flowing between components is still pdata, so a processor that wants one field has to
+materialise the batch to get it. `go/store/` is what the other half looks like: a
+service that reads the spool directly and never builds a pdata object at all.
+
+### Reading backwards, in place
+
+```go
+q, _ := store.Open("spans.dagr")
+q.LastSpans(500, func(s store.Span) bool {   // newest first, across batch boundaries
+    code, _ := s.Acc.Status()                // read out of the mapped file
+    return true
+})
+```
+
+A `store.Span` is a handle, not a span. Two orderings are in play and they are not the
+same: batches come newest-first for free — that is the doubly-linked span — while spans
+*within* a batch are stored oldest-first, and a packed array's indexed access is O(i).
+So a batch is read forward once through the generated iterator into a reusable buffer
+and emitted from the end. Sweeping with `At(i)` would be quadratic; the store never does.
+
+The claims are measured rather than asserted, which is what `store.Stats` is for:
+
+| query | batches opened | allocs |
+|---|---|---|
+| `LastSpans(500)` over 20 × 500-span batches | **1** | 2 |
+| `LastSpans(501)` over the same | **2** | 2 |
+| `SpanCount()` — every batch, every span | **0** (the envelope carries it) | — |
+| a full scan of 1,000 spans vs 4,000 | — | **identical** |
+
+The two allocations are opening the reverse reader, once per walk. Per span it is zero,
+and the gate is written as a ratio — quadruple the spool, the number must not move —
+because that is the claim that is actually true.
+
+### Retention by compaction, not rotation
+
+`store.Ring` bounds the spool by bytes or batches. When it goes over, it walks backwards
+from EOF collecting records until the budget binds, and rewrites just those. **The prefix
+it is dropping is never read.** A ring with a 4 MB budget sitting at 400 MB costs 4 MB of
+reading to trim, and the test gates the walk length: keeping 4 of 12 records must look at
+exactly 5 — the four kept and the one that broke the budget.
+
+Segment files with a directory over them, which is how log systems do this, exist because
+their readers cannot start from the end. This one can.
+
+### Tail sampling where the buffer is the file
+
+The collector's `tail_sampling` processor holds every span of every undecided trace in a
+map and caps itself at `num_traces` — a cap that exists *because the spans are in RAM*.
+Here they are not. The spans are already on disk in a file that reads backwards, so the
+only thing memory has to hold is what the policy needs:
+
+```
+Decide   walk the window newest-first; read trace_id, start, end and status.code off each
+         span in place; fold them into one flat 64-byte Summary per trace. No spans, no
+         accessors, no batches are kept.
+Emit     walk again for the traces the policy accepted, and hand out their spans. Only
+         the sampled fraction is touched twice; only the sampled fraction is ever
+         materialised.
+```
+
+Walking twice is precisely what the in-memory design cannot afford and this one can: the
+second pass re-reads a file already in the page cache, against pinning every span of
+every open trace in the heap for the length of the decision wait.
+
+**The same decision, over the same spool, 400 traces / 1,199 spans / 13.2% sampled:**
+
+| | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| lazy — fields read in place | **204,248** | **10,648** | **19** |
+| via pdata — `ToTraces`, then walk | 869,129 | 467,171 | 7,837 |
+| | **4.3×** | **44× less** | **412× fewer** |
+
+Both paths agree on the verdict before either is timed. The 19 allocations are the
+*result* — the sampled summaries and the keep set; the working state is reused, and the
+gate for that is again a ratio: deciding 400 traces must not allocate four times what
+deciding 100 does.
+
+`BenchmarkLastSpans` — the crash-ring query, 500 spans out of 10,000 — is **67.6 µs, 2
+allocs, 1 batch opened.**
+
+### A corpus bug, again
+
+`fixture.NewSampling` derived its trace ids byte-wise from the trace index, which wraps
+at 256: a 400-trace corpus quietly became a 256-trace one, surplus traces merged into
+existing ids, every per-trace expectation silently wrong. Nothing failed — the benchmark
+just printed a trace count that did not match its input, which is the only reason it was
+noticed. The id is injective now and a test gates it at 60, 256, 400 and 1,000 traces.
+
+That is the second time in two steps that the fixture, not the code, was the thing that
+was wrong. The [links](#one-thing-the-benchmark-could-not-have-caught) case was a corpus
+that did not cover a feature; this one was a corpus that did not contain what it said it
+did.
+
 ## What this says about the next step
 
 | | verdict |
@@ -380,6 +482,8 @@ the spool directly, and `spool.Reader` is the whole API it needs.
 | **Exporter → spool** | **runs, in a real collector.** Framing and appending costs ~10% on top of encoding and allocates nothing; the record stores the encoder's output verbatim. |
 | **Spool → receiver** | **runs, and loses, as designed** — it materialises. It is the compatibility path, not the fast one. |
 | **Crash tail** | **detected, over every truncation of a batch** — and the naive one-record check is not enough to do it (see above). |
+| **Crash ring** | **decisive** — 500 newest spans out of 10,000 in 67.6 µs, one batch opened, 2 allocs. Retention never reads what it drops. |
+| **Tail sampling** | **decisive** — the same decision is 4.3× faster and allocates 412× less than taking it through pdata, and the buffer is the file rather than the heap. |
 
 So the §14 step-1 gate — "if this does not win decisively on allocations, stop" — is
 **passed**; step 2 (the lazy array iterator) is **done**; step 3 (the direct builder's
@@ -395,10 +499,19 @@ decoding a span, and knows whether its own tail survived the last kill. None of 
 something a protobuf payload in a KV store gives you, and none of it depended on Dagr
 being faster.
 
-What step 6 does **not** settle is §5.3: the type flowing between collector components is
+What step 6 did **not** settle was §5.3: the type flowing between collector components is
 still pdata, so the lazy reads that win 29× cannot happen *inside* a pipeline. They
-happen in something reading the spool directly. Step 7 (`spool.Reader` as a query
-surface: the crash ring, then the tail-sampling buffer) is where that gets built.
+happen in something reading the spool directly — which is step 7, and it is built:
+`go/store/` is that something. The crash ring answers "the last 500 spans" in 67.6 µs
+touching one batch, and the tail sampler takes the same decision a collector processor
+takes, 4.3× faster and allocating 412× less, with its buffer on disk instead of capped
+in RAM.
+
+So the shape the whole plan has been arguing toward is now assembled end to end: Dagr at
+the collector's edges (step 6), and the reads that justify it in a service that owns the
+buffer (step 7). What is left is §14 step 8 — the Arrow bridge and/or Go path query —
+and the open decisions in §12, of which D6 (bring metrics in to validate the
+ImportedGraph split) is the one that would most change the schema.
 
 ## Licence
 

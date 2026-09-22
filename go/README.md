@@ -18,6 +18,11 @@
   *is* the queue, so there is deliberately no `exporterhelper` queue in front of it.
 - `receiver/` — `dagrfilereceiver`, the spool back into an unmodified pipeline. The slow
   path by construction (it materialises), and documented as such.
+- `store/` — the query surface over a spool (spec/38 §6.2, §6.3): `Query` reads spans
+  newest-first as lazy handles and reports what the walk actually cost, `Ring` bounds the
+  spool by compacting from the tail without reading what it drops, and `Sampler` is a
+  tail sampler that keeps one flat summary per trace instead of every span of every
+  undecided trace.
 - `cmd/otlpdagrctl/` — the round-trip harness `ocb/roundtrip.sh` drives: `send` a batch
   over OTLP/HTTP, `spool` to report and check a spool, `verify` a dump against what was
   sent.
@@ -26,5 +31,6 @@
 go test ./...                                       # every gate
 go test ./bench -bench . -benchmem -benchtime 500x  # the read/encode numbers
 go test ./exporter -bench ConsumeTraces -benchtime 2s
+go test ./store -bench . -benchtime 2s              # crash ring + lazy vs pdata decisions
 ../ocb/roundtrip.sh                                 # through a real ocb-built collector
 ```
