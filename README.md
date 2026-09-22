@@ -48,14 +48,17 @@ Apple M4 Max, Go 1.22, `pdata v1.44.0`, 500 spans × 8 attributes, `-benchtime 5
 
 ```
                             ns/op        B/op    allocs/op
-Sweep_Proto                320521      691792        15124
-Sweep_DagrLazy             475003           0            0
-Attr_Proto                 319573      691770        15124
-Attr_DagrLazy              508364           0            0
-Pinpoint_Proto             323267      691780        15124
-Pinpoint_DagrLazy            3557           0            0
-Open_Proto                 323537      691770        15124
-Open_DagrUnchecked             21.67        0            0
+Sweep_Proto                319980      691791        15124
+Sweep_DagrAll               34277           0            0    9.3x   ← iterator
+Sweep_DagrCursor            35200           0            0    9.1x
+Sweep_DagrLazy (At)        491327           0            0    0.65x  ← O(n^2), see below
+Attr_Proto                 327065      691769        15124
+Attr_DagrAll                75321           0            0    4.3x
+Attr_DagrLazy (At)         522258           0            0
+Pinpoint_Proto             325232      691769        15124
+Pinpoint_DagrLazy            3688           0            0    88x
+Open_Proto                 321644      691769        15124
+Open_DagrUnchecked             17.50        0            0    18400x
 ```
 
 **Zero allocations on every read path.** That is the number that matters for a
@@ -66,49 +69,57 @@ lazy Dagr read allocates nothing because it indexes a borrowed `[]byte`.
   (323 µs); Dagr indexes straight to them (3.6 µs).
 - **Open — 14,900× faster.** `OpenOtlpTracesUnchecked` is 21.7 ns: framing only. There
   is no decode step to pay before the first field read.
-- **Sweep — Dagr is currently 1.48× SLOWER, and that is a fixable API gap, not the
-  format.** See below.
+- **Sweep — 9.3× faster**, once the array is walked with an iterator rather than
+  indexed. See below: the first version of this benchmark measured 1.48× *slower*, and
+  finding out why produced a fix in Dagr itself.
 
-### The sweep gap: indexed access into a packed array is O(n²)
+### The sweep: why `At(i)` is O(n²), and what the iterator fixed
 
-```
-spans     Proto ns    DagrLazy ns
-   50        32370           7521      dagr 4.3x FASTER
-  100        65017          23785
-  250       159319         125809
-  500       319668         474070      dagr 1.48x slower
-```
-
-protobuf scales linearly (10× the spans → 9.9× the time). Dagr scales **quadratically**
-(10× the spans → 63× the time), and crosses over around 300 spans.
-
-The cause is in the generated accessor, not the wire format. A `packed` node array has
-no offset table — elements are inlined and self-sizing — so `SpansAt(i)` reaches element
-`i` by skipping `i` blobs from the array start:
+A `packed` node array has no offset table — elements are inlined and self-sizing — so
+`SpansAt(i)` reaches element `i` by skipping `i` blobs from the array start, and then
+**throws the cursor away**:
 
 ```go
 func (a ScopeSpansAccessor) SpansAt(i int) SpanAccessor {
 	...
 	for j := 0; j < i; j++ {
-		p = dagr.SkipBlob(a.buf, p)   // O(i), and the cursor is thrown away
+		p = dagr.SkipBlob(a.buf, p)   // O(i), and the cursor is discarded
 	}
 	return NewSpanAccessor(a.buf, p)
 }
 ```
 
-Sweeping with `At(i)` is therefore O(n²). **The Go lazy API exposes no iterator**, so
-there is no way to walk the array once — the reader already advances sequentially
-inside `At(i)`, it just discards the cursor on every call. (The Rust lazy reader has
-`.iter()`, which is why the Rust benchmark shows a 29× sweep win.)
+Sweeping with `At(i)` is therefore O(n²), and the Go lazy API had no iterator, so there
+was no way to walk an array once. Dagr's Go generator now emits a cursor that keeps the
+position between elements, plus a range-over-func `All()` built on it (Dagr `spec/38`
+§10.2, decision D7):
 
-Fitting `t = a·n + b·n²` to the four points gives `a = 61.8 ns/span`, `b = 1.77 ns`
-(predicts the two middle points to within 0.5%). Dropping the quadratic term — i.e.
-adding an iterator — projects a 500-span sweep at **≈31 µs against protobuf's 320 µs:
-~10× faster, still at zero allocations.**
+```go
+for sp := range ss.SpansAll() { ... }        // range-over-func
+it := ss.SpansIter()                         // or the cursor primitive
+for sp, ok := it.Next(); ok; sp, ok = it.Next() { ... }
+```
 
-Until that iterator exists, the honest statement is: **Dagr-Go wins reads decisively
-whenever the access is pinpoint or the arrays are small, allocates nothing ever, and
-loses a large-array sweep to an O(n²) in its own accessor.**
+The difference is the whole finding:
+
+```
+spans     Proto ns    At(i) ns    All() ns
+   50        33559        7586        3528
+  100        71414       24308        6920
+  250       164666      128736       17372
+  500       325002      490982       34857
+```
+
+`At(i)` scales quadratically (10× the spans → 65× the time, crossing over near 300
+spans). `All()` scales **linearly** — 10× the spans, 9.9× the time — and at 500 spans it
+is **9.3× faster than protobuf at zero allocations**. A least-squares fit on the old
+numbers projected ≈31 µs; measured, it is 34.9 µs.
+
+Range-over-func costs nothing measurable over the raw cursor (34.3 µs vs 35.2 µs), so
+`All()` is the form to reach for.
+
+`At(i)` is kept — random access into a short array is legitimate and it is still the
+only way to index — but **any sweep should use `All()` / `Iter()`.**
 
 ### Validation is not free
 
@@ -168,14 +179,14 @@ the serializer alone is 3.6× protobuf's marshal.
 |---|---|
 | **Reads, allocations** | **decisive win** — 0 vs 15,124 allocs/op on every path. This is the collector's actual pain. |
 | **Reads, pinpoint / open** | **decisive win** — 91× and 14,900×. |
-| **Reads, large-array sweep** | **blocked on a missing iterator** in the Go lazy API; projected ~10× once added. Highest-value fix. |
+| **Reads, large-array sweep** | **fixed** — 9.3× via the new `All()` / `Iter()`, linear scaling, 0 allocs. `At(i)` in a loop is still O(n²) by construction. |
 | **Validated open** | 3.2× a protobuf decode. Fine in-process, a real cost on an untrusted hop. |
 | **Materialise to pdata** | loses, as designed. Do not build a pipeline that does this. |
 | **Encode from pdata** | **loses today, 5.3×.** Needs a pdata-walking direct builder and allocation work in Dagr-Go's builder before the Rust encode claim can be repeated here. |
 
 So the §14 step-1 gate — "if this does not win decisively on allocations, stop" — is
-**passed**, and the two follow-ups it exposes are concrete: a lazy array iterator in
-`dagr/codegen/go/core.py`, and the direct builder's allocation profile.
+**passed**; step 2 (the lazy array iterator) is **done**; and one follow-up remains: the
+direct builder's allocation profile (§10.2.1 in the Dagr repo).
 
 ## Licence
 

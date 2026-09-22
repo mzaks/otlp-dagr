@@ -431,3 +431,197 @@ func BenchmarkEncode_DagrTreeOnly(b *testing.B) {
 		sink += uint64(len(v.ResourceSpans.V))
 	}
 }
+
+// ── iterators (Dagr spec/38 §10.2 / D7) ──────────────────────────────────────
+//
+// `{F}Iter()` keeps the cursor between elements instead of replaying the skip loop
+// from the array start, so a sweep is O(n) rather than O(n^2). `{F}All()` is the
+// range-over-func form built on it. A faster walk that walks something else is not a
+// result, so the agreement test runs first.
+
+func sweepDagrIter(buf []byte) uint64 {
+	root, err := g.OpenOtlpTracesUnchecked(buf)
+	if err != nil {
+		panic(err)
+	}
+	var acc uint64
+	for rs := range root.ResourceSpansAll() {
+		for ss := range rs.ScopeSpansAll() {
+			for sp := range ss.SpansAll() {
+				start, _ := sp.StartTimeUnixNano()
+				nm, _ := sp.NameBytes()
+				acc += start + uint64(len(nm))
+			}
+		}
+	}
+	return acc
+}
+
+// sweepDagrCursor is the same walk through the cursor primitive rather than
+// range-over-func, so the two forms can be compared directly.
+func sweepDagrCursor(buf []byte) uint64 {
+	root, err := g.OpenOtlpTracesUnchecked(buf)
+	if err != nil {
+		panic(err)
+	}
+	var acc uint64
+	rsIt := root.ResourceSpansIter()
+	for rs, ok := rsIt.Next(); ok; rs, ok = rsIt.Next() {
+		ssIt := rs.ScopeSpansIter()
+		for ss, ok := ssIt.Next(); ok; ss, ok = ssIt.Next() {
+			spIt := ss.SpansIter()
+			for sp, ok := spIt.Next(); ok; sp, ok = spIt.Next() {
+				start, _ := sp.StartTimeUnixNano()
+				nm, _ := sp.NameBytes()
+				acc += start + uint64(len(nm))
+			}
+		}
+	}
+	return acc
+}
+
+func attrDagrIter(buf []byte) uint64 {
+	root, err := g.OpenOtlpTracesUnchecked(buf)
+	if err != nil {
+		panic(err)
+	}
+	var acc uint64
+	for rs := range root.ResourceSpansAll() {
+		for ss := range rs.ScopeSpansAll() {
+			for sp := range ss.SpansAll() {
+				for kv := range sp.AttributesAll() {
+					if kb, ok := kv.KeyBytes(); ok && bytes.Equal(kb, routeKeyBytes) {
+						if v, ok := kv.Value(); ok && v.Tag() == g.AnyValueTagStringValue {
+							acc += uint64(len(v.StringValueBytes()))
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+	return acc
+}
+
+// TestIterMatchesAt walks every array in the batch both ways and compares element by
+// element — node arrays at three nesting levels, and the attribute arrays under them.
+func TestIterMatchesAt(t *testing.T) {
+	root, err := g.OpenOtlpTracesUnchecked(dagrBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsN, _ := root.ResourceSpansLen()
+	seen := 0
+	it := root.ResourceSpansIter()
+	for i := 0; i < rsN; i++ {
+		rs, ok := it.Next()
+		if !ok {
+			t.Fatalf("ResourceSpans iterator ended early at %d/%d", i, rsN)
+		}
+		want := root.ResourceSpansAt(i)
+		ssN, _ := rs.ScopeSpansLen()
+		if w, _ := want.ScopeSpansLen(); w != ssN {
+			t.Fatalf("ResourceSpans[%d]: ScopeSpansLen %d vs %d", i, ssN, w)
+		}
+		ssIt := rs.ScopeSpansIter()
+		for j := 0; j < ssN; j++ {
+			ss, ok := ssIt.Next()
+			if !ok {
+				t.Fatalf("ScopeSpans iterator ended early at %d", j)
+			}
+			spN, _ := ss.SpansLen()
+			spIt := ss.SpansIter()
+			for k := 0; k < spN; k++ {
+				sp, ok := spIt.Next()
+				if !ok {
+					t.Fatalf("Spans iterator ended early at %d/%d", k, spN)
+				}
+				exp := rs.ScopeSpansAt(j).SpansAt(k)
+				gotS, _ := sp.StartTimeUnixNano()
+				wantS, _ := exp.StartTimeUnixNano()
+				gotN, _ := sp.Name()
+				wantN, _ := exp.Name()
+				if gotS != wantS || gotN != wantN {
+					t.Fatalf("span %d: iter (%d,%q) vs At (%d,%q)", k, gotS, gotN, wantS, wantN)
+				}
+				// attributes: a second, inner array on every element
+				aN, _ := sp.AttributesLen()
+				aIt := sp.AttributesIter()
+				for x := 0; x < aN; x++ {
+					kv, ok := aIt.Next()
+					if !ok {
+						t.Fatalf("Attributes iterator ended early at %d/%d", x, aN)
+					}
+					gk, _ := kv.Key()
+					wk, _ := exp.AttributesAt(x).Key()
+					if gk != wk {
+						t.Fatalf("span %d attr %d: iter %q vs At %q", k, x, gk, wk)
+					}
+					seen++
+				}
+				if _, ok := aIt.Next(); ok {
+					t.Fatalf("Attributes iterator overran at span %d", k)
+				}
+			}
+			if _, ok := spIt.Next(); ok {
+				t.Fatal("Spans iterator overran")
+			}
+		}
+	}
+	if _, ok := it.Next(); ok {
+		t.Fatal("ResourceSpans iterator overran")
+	}
+	if seen != seed.NSpans*len(seed.AttrKeys) {
+		t.Fatalf("visited %d attributes, want %d", seen, seed.NSpans*len(seed.AttrKeys))
+	}
+}
+
+func TestIterSweepsAgree(t *testing.T) {
+	want := sweepProto(protoBytes)
+	for name, got := range map[string]uint64{
+		"At":     sweepDagr(dagrBytes),
+		"All":    sweepDagrIter(dagrBytes),
+		"cursor": sweepDagrCursor(dagrBytes),
+	} {
+		if got != want {
+			t.Errorf("%s sweep = %d, want %d", name, got, want)
+		}
+	}
+	if got, want := attrDagrIter(dagrBytes), attrProto(protoBytes); got != want {
+		t.Errorf("All attr sweep = %d, want %d", got, want)
+	}
+}
+
+func BenchmarkSweep_DagrAll(b *testing.B) {
+	b.SetBytes(int64(len(dagrBytes)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		sink += sweepDagrIter(dagrBytes)
+	}
+}
+
+func BenchmarkSweep_DagrCursor(b *testing.B) {
+	b.SetBytes(int64(len(dagrBytes)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		sink += sweepDagrCursor(dagrBytes)
+	}
+}
+
+func BenchmarkAttr_DagrAll(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		sink += attrDagrIter(dagrBytes)
+	}
+}
+
+func BenchmarkScaling_DagrAll(b *testing.B) {
+	for _, f := range scaleFixtures {
+		b.Run(spanLabel(f.n), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				sink += sweepDagrIter(f.dagr)
+			}
+		})
+	}
+}
