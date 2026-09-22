@@ -153,9 +153,10 @@ Encode_DagrDirect            280000     1228000        2331   one-shot builder
 Encode_DagrDirectAppend      218818      475832        2313   reused builder + dst
   ├─ DagrTreeOnly             97858      475217        2312     …fresh value tree
   └─ DagrSerializeAppend     122886         376           0     Dagr: tree → bytes
-Encode_DagrReuseAppend       123219         271           0   + reused tree scratch
+Encode_DagrReuseAppend       124478         271           0   + reused tree scratch
   ├─ DagrTreeOnlyReuse        43067         121           0     …bridge fill only
-  └─ DagrSerializeAppend      81395         150           0     …Dagr: 1.07× protobuf
+  └─ DagrSerializeAppend      81460         150           0     …Dagr: 1.07× protobuf
+Encode_DagrStreamAppend      114674         151           0   no value tree at all
 ```
 
 **The whole encode path allocates nothing.**
@@ -224,9 +225,12 @@ Two things still stand between Go and the Rust result:
    against protobuf's ~78 µs, so even a zero-cost pdata walker lands at **1.33×** — and
    the tree fill it would remove is only 43 µs of the 148.
 3. ~~The serializer's call shape.~~ **Done** — see above, 1.07× protobuf.
-4. **This bridge's value tree is now the whole remaining gap**: 43 µs of the 123, and
-   every one of the 2,312 allocations. A pdata-walking builder with no intermediate tree
-   would take encode to ~1.07× protobuf outright. It also needs a real Dagr feature: the
+4. ~~This bridge's value tree.~~ **Gone** — `StreamBuilder` walks pdata once, building
+   each span on the stack and reusing the scratch behind its attribute and event slices
+   (`pdatabridge/stream.go`). 124.5 → 114.7 µs, **1.50× protobuf**. What is left is not
+   Dagr: profiling shows the residue is pdata's own accessor API — `Map.Range` takes a
+   closure and runs per attribute, 4,000 times a batch, each with a `pcommon.Value` type
+   switch. It also needs a real Dagr feature: the
    Go direct builder consumes value structs, so streaming from pdata means a
    second, source-driven store path generated per node. That is a `spec/33` addition,
    and it should be weighed against that 1.61× ceiling.
@@ -245,13 +249,13 @@ and the correction in `§1.51`.
 | **Reads, large-array sweep** | **fixed** — 9.3× via the new `All()` / `Iter()`, linear scaling, 0 allocs. `At(i)` in a loop is still O(n²) by construction. |
 | **Validated open** | 3.2× a protobuf decode. Fine in-process, a real cost on an untrusted hop. |
 | **Materialise to pdata** | loses, as designed. Do not build a pipeline that does this. |
-| **Encode from pdata** | **loses, 1.61× — down from 5.3×, allocation-free.** The Dagr serializer itself is at **1.07× — parity**; the remaining gap is this bridge's value tree. |
+| **Encode from pdata** | **loses, 1.50× — down from 5.3×, allocation-free, one pass over pdata.** The Dagr serializer itself is at **1.07× — parity**; the residue is pdata's own accessor API. |
 
 So the §14 step-1 gate — "if this does not win decisively on allocations, stop" — is
 **passed**; step 2 (the lazy array iterator) is **done**; step 3 (the direct builder's
 allocation profile and its call shape) is **done** — the serializer allocates nothing and
-runs at 1.07× protobuf. What is left is this bridge's value tree: a source-driven store
-path walking pdata straight to bytes would take the whole encode to ~1.07×.
+runs at 1.07× protobuf — and the bridge's intermediate value tree is **gone**: pdata is
+walked once, straight into the buffer, at 1.50× protobuf overall.
 
 ## Licence
 

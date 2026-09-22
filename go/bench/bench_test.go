@@ -709,3 +709,49 @@ func BenchmarkEncode_DagrReuseAppend(b *testing.B) {
 		sink += uint64(len(dst))
 	}
 }
+
+// ── streaming: pdata walked once, straight into the buffer ───────────────────
+//
+// The scratch builder still materialises a value tree for the whole batch (sized by a
+// counting pass, then filled, then serialized — pdata walked twice and the tree once).
+// StreamBuilder walks pdata ONCE: each span's value struct is built on the stack,
+// written immediately through the generated Put{N}, and the scratch behind its attribute
+// and event slices is reused by the next span.
+
+func TestStreamMatches(t *testing.T) {
+	if pdatabridge.HasLinks(traces) {
+		t.Skip("stream builder does not cover links")
+	}
+	w := pdatabridge.NewStreamBuilder()
+	// twice — the second call is the one that reuses every piece of scratch
+	for i := 0; i < 2; i++ {
+		if got := w.BuildAppend(nil, traces); !bytes.Equal(got, dagrBytes) {
+			t.Fatalf("pass %d: stream builder diverged: %d B vs %d B", i, len(got), len(dagrBytes))
+		}
+	}
+	// interleave a differently-shaped batch, to catch scratch that outlived its span
+	small := fixture.TracesN(7)
+	smallWant := pdatabridge.ToBytes(small)
+	for i := 0; i < 3; i++ {
+		if got := w.BuildAppend(nil, small); !bytes.Equal(got, smallWant) {
+			t.Fatalf("small pass %d diverged", i)
+		}
+		if got := w.BuildAppend(nil, traces); !bytes.Equal(got, dagrBytes) {
+			t.Fatalf("large pass %d diverged", i)
+		}
+	}
+}
+
+func BenchmarkEncode_DagrStreamAppend(b *testing.B) {
+	w := pdatabridge.NewStreamBuilder()
+	dst := make([]byte, 0, len(dagrBytes)+64)
+	if got := w.BuildAppend(dst[:0], traces); !bytes.Equal(got, dagrBytes) {
+		b.Fatal("diverged")
+	}
+	b.SetBytes(int64(len(dagrBytes)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		dst = w.BuildAppend(dst[:0], traces)
+		sink += uint64(len(dst))
+	}
+}

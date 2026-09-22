@@ -920,11 +920,11 @@
     "go/gen/otlp_traces.go": "sha256:bdc6f4df0855ca7c21ec782fd36947747b58b91ad439ccac5412ccd5c4061db0",
     "go/gen/otlp_traces_arena.go": "sha256:2db2542267e401c3c21a307414eeafa6749df08cb05870c9c4f2ceac43988967",
     "go/gen/otlp_traces_serde.go": "sha256:bfb73eb3ffd721fc9e52ebb7e920638f785590e3e874b89b954f4a33b69e5661",
-    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:fb4585806f27b02c4851f4093640ef4a4e1ada1fda4867bd6d6e551345e937f3"
+    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:51a0cc49a3cdbedccb78e47cfbda39e262528af009fcb36c2fe8459bf04a9681"
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-22T14:13:54.856590+00:00",
+    "generated_at": "2026-09-22T14:34:26.045232+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.0"
   },
