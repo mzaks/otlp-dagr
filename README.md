@@ -3,10 +3,11 @@
 OTLP traces as a [Dagr](https://codeberg.org/mzaks/dagr) data graph, and the
 measurements that say whether that is worth doing.
 
-This implements steps 1–2 of `spec/38-otlp-on-dagr.md` in the Dagr repo: the schema
-skeleton, a `pdata` bridge, and the benchmark that decides the rest — **Dagr's Go lazy
+This implements steps 1–3 and 6 of `spec/38-otlp-on-dagr.md` in the Dagr repo: the
+schema, a `pdata` bridge, the benchmark that decides the rest — **Dagr's Go lazy
 accessors against `ptrace.Unmarshal` + pdata accessors, in nanoseconds and in
-allocations.**
+allocations** — and a **collector exporter/receiver pair** that writes and reads an
+append-only Dagr spool, built with `ocb` and round-tripped through a real collector.
 
 ## Layout
 
@@ -16,12 +17,18 @@ dagr.lock.json     the generation receipt (committed; `./regen.sh check` diffs i
 proto/otlp/        vendored opentelemetry-proto (Apache-2.0, see PROVENANCE.txt)
 regen.sh           dagr build + gofmt/vet
 go/                see go/README.md
+  spool/           the spool file: append, read forward/newest-first, check the tail
+  exporter/        dagrfileexporter — pdata in, one Dagr record per batch
+  receiver/        dagrfilereceiver  — the spool back into an unmodified pipeline
+  cmd/otlpdagrctl/ the round-trip harness (send / spool / verify)
+ocb/               collector builder manifest, two pipeline configs, roundtrip.sh
 ```
 
 ```bash
 ./regen.sh                                            # regenerate go/gen
-cd go && go test ./bench -run Test -v                 # correctness gates
+cd go && go test ./...                                # every gate
 cd go && go test ./bench -bench . -benchmem -benchtime 500x
+./ocb/roundtrip.sh                                    # build a collector, round trip through it
 ```
 
 `schema.py` is `packed`, not `frozen+packed`, deliberately — frozen is positional and
@@ -240,6 +247,126 @@ interface word and widening the struct to 80 and 40 bytes; both were slower and 
 reverted. The cost belonged to the widening, not to the idea — `spec/32 §1.48`, `§1.50`
 and the correction in `§1.51`.
 
+## The exporter/receiver pair
+
+`spec/38 §6.1.1`, and the first thing here that someone outside this repo can run.
+
+An OTLP batch leaves the exporter as one record in a **doubly-linked `DataSink`**
+(`SpanLog` in `schema.py`) — an append-only file where every record also carries its own
+byte length written backwards at its end. That trailing span is the whole design:
+
+```
+[framing] ( [typeId] [content_size] [received_unix_nano | span_count | batch] [span] )*
+                                                                        ^^^^^     ^^^^
+                                                            raw embedded graph    RLEB
+```
+
+- **The batch is stored verbatim.** `traces` is a `raw` embedded graph (`spec/18 §11`),
+  so the exporter's job really is "frame and append": the bytes the direct builder
+  produced go to disk untouched, and the receiver gets them back as a sub-slice of the
+  file. `TestExporterWritesTheBuilderOutputVerbatim` gates that byte for byte. The leaf
+  is a genuine standalone Dagr buffer — it reads through `OtlpTraces`' own accessors and
+  through `dagr graph-explorer`.
+- **The envelope answers questions without opening the batch.** `received_unix_nano` and
+  `span_count` are two packed scalars per record, so "the last 500 spans before the
+  error" walks backwards reading 24 bytes a record and never decodes a span.
+- **Restart recovery is O(1), not O(spool).** The reverse span means a restarting
+  exporter validates the *last* record instead of scanning a multi-GB file forward.
+
+### The tail is the part that has to be right
+
+A write-ahead log is only worth the guarantee it makes about its own tail, so this is
+where most of the test weight sits.
+
+The naive check — read the trailing span, step back, re-parse the record forward, see
+whether the two agree — is not enough, and measurably so. The span's terminating byte
+only needs its high bit clear, and a short span only needs two varints to line up, so
+arbitrary body bytes satisfy that check by accident: sweeping **every** truncation of a
+500-span batch, a depth-1 check accepted several torn files as intact. `spool.CheckTail`
+therefore chains the check up to `ValidateDepth` (32) records back — a coincidence cannot
+survive that repeatedly — while staying O(1) in the spool's size. Only a genuinely torn
+tail pays a forward rescan, once, on a crash.
+
+`TestTornTailIsDetected` runs that sweep: every prefix that cuts into the last record must
+be reported torn *and* must recover to exactly the same offset. `spool.Recover` truncates
+the damage away, and `TestResumeAfterCrashKeepsOneStream` asserts that the spool a
+resumed exporter produces is **byte-identical** to one written in a single run.
+
+### What the round trip actually runs
+
+`./ocb/roundtrip.sh` builds a real collector with the OpenTelemetry Collector Builder —
+our two components plus the stock `otlp` receiver and contrib's `file` exporter — and
+then:
+
+```
+phase A   otlp receiver ──▶ dagrfile exporter ──▶ spans.dagr
+phase B   dagrfile receiver ──▶ file exporter ──▶ out.json  ──▶ compared with what was sent
+```
+
+```
+sent 4 batches of 500 spans to http://127.0.0.1:4318/v1/traces
+spool …/spans.dagr: 911213 bytes, 4 batches, 2000 spans, intact tail at 911213 bytes (reverse walk)
+  newest batch: 500 spans, received 2026-09-22T17:40:17+02:00, 227780 embedded bytes
+verified 2000 spans through the collector round trip
+otlpdagrctl: spool tail is torn: torn tail: dropped 97630 bytes after 683410 (forward rescan)
+```
+
+The `227780 embedded bytes` is the same number the benchmark reports for the batch, which
+is the point: the spool stores the encoder's output and adds 24 bytes of envelope and
+framing around it.
+
+### Cost
+
+`go test ./exporter -bench ConsumeTraces -benchtime 2s -count 3`, 500-span batch, spool
+at `/dev/null` (median of three):
+
+| | ns/op | allocs/op |
+|---|---|---|
+| encode (direct builder into a retained buffer) | 115,208 | **0** |
+| encode + append one sink record | 124,899 | **0** |
+
+Framing and appending a batch costs **8%** on top of encoding it, and the steady state
+allocates nothing — the builder and its destination are held by the exporter and reused.
+
+That second row did not start out at zero. The generated Go sink writer built each
+record in a fresh `dagr.Builder` and copied it out with `MakeData()`, which on a
+227 KB raw-embedded leaf cost 2 allocations and 496 KB **per batch**. Fixing it in
+`dagr/codegen/go/sink.py` (reuse the writer's builder; hand `emit` the builder's own
+bytes, which it copies into its scratch anyway) also surfaced a latent aliasing bug the
+Dagr repo's own sink-header gate caught immediately: `EnsureFraming` runs from *inside*
+`emit`, so writing the stream header through the shared builder would overwrite the
+record being emitted. The header now uses a throwaway builder of its own.
+
+### One thing the benchmark could not have caught
+
+`StreamBuilder` — the one-pass pdata walker the encode numbers are measured on — did not
+write span **links**. It was written against the seeded corpus, which has none, and it
+carried a `HasLinks` guard so a caller could fall back to the value-tree builder. Nothing
+called that guard except a test that used it to *skip itself*, so the fast path silently
+dropped links, and step 6 is where that path stops being a benchmark and starts being an
+exporter in a real collector.
+
+It is fixed (links stream like events, into scratch the next span reuses), and it is now
+gated three ways: the streamed bytes must equal the value-tree builder's on a
+link-carrying batch, the links must survive a read-back, and the exporter/receiver round
+trip runs on a batch with links on every third span. `fixture.TracesWithLinks` is
+deliberately separate from `seed`, which stays a byte-for-byte port of the Rust
+benchmark's `otlp_seed()`.
+
+The general lesson is about corpora, not links: a fixture chosen to make two encoders
+comparable is not a fixture that covers either one.
+
+### The receiver is the slow path, on purpose
+
+`dagrfilereceiver` materialises every batch into pdata, and `spec/38 §0.1` measures eager
+restore at ~1.6× slower than a protobuf unmarshal. It exists so an **unmodified** pipeline
+can consume a spool, and for nothing else. Do not benchmark otlp-dagr through it.
+
+The fast path is the opposite shape — keep the buffer, read the fields you need in place,
+29× a protobuf decode with zero allocations — and it cannot be a receiver, because the
+type flowing between collector components is pdata. It is a standalone service reading
+the spool directly, and `spool.Reader` is the whole API it needs.
+
 ## What this says about the next step
 
 | | verdict |
@@ -250,12 +377,28 @@ and the correction in `§1.51`.
 | **Validated open** | 3.2× a protobuf decode. Fine in-process, a real cost on an untrusted hop. |
 | **Materialise to pdata** | loses, as designed. Do not build a pipeline that does this. |
 | **Encode from pdata** | **loses, 1.50× — down from 5.3×, allocation-free, one pass over pdata.** The Dagr serializer itself is at **1.07× — parity**; the residue is pdata's own accessor API. |
+| **Exporter → spool** | **runs, in a real collector.** Framing and appending costs ~10% on top of encoding and allocates nothing; the record stores the encoder's output verbatim. |
+| **Spool → receiver** | **runs, and loses, as designed** — it materialises. It is the compatibility path, not the fast one. |
+| **Crash tail** | **detected, over every truncation of a batch** — and the naive one-record check is not enough to do it (see above). |
 
 So the §14 step-1 gate — "if this does not win decisively on allocations, stop" — is
 **passed**; step 2 (the lazy array iterator) is **done**; step 3 (the direct builder's
 allocation profile and its call shape) is **done** — the serializer allocates nothing and
 runs at 1.07× protobuf — and the bridge's intermediate value tree is **gone**: pdata is
 walked once, straight into the buffer, at 1.50× protobuf overall.
+
+Step 6 is **done** too, and it moved the question. Up to here everything was a number;
+the exporter/receiver pair is a thing that runs inside an unmodified collector, and what
+it demonstrates is not speed but *shape* — an append-only spool that frames what the
+encoder produced without touching it, answers "the newest N" from the envelope without
+decoding a span, and knows whether its own tail survived the last kill. None of that is
+something a protobuf payload in a KV store gives you, and none of it depended on Dagr
+being faster.
+
+What step 6 does **not** settle is §5.3: the type flowing between collector components is
+still pdata, so the lazy reads that win 29× cannot happen *inside* a pipeline. They
+happen in something reading the spool directly. Step 7 (`spool.Reader` as a query
+surface: the crash ring, then the tail-sampling buffer) is where that gets built.
 
 ## Licence
 
