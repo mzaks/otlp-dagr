@@ -4,3 +4,7 @@ rust/gen/
 
 __pycache__/
 *.pyc
+
+# ocb output: the built collector binary and the round-trip working directory.
+ocb/build/
+ocb/work/

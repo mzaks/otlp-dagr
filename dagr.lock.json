@@ -906,13 +906,76 @@
       {
         "kind": "graph",
         "name": "OtlpTraces"
+      },
+      {
+        "kind": "sink",
+        "name": "SpanLog"
       }
     ],
     "shared_buffers": {},
-    "sinks": {},
+    "sinks": {
+      "SpanLog": {
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpTraces",
+            "package_name": null
+          }
+        ],
+        "name": "SpanLog",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "received_unix_nano",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_count",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "traces",
+                "options": 9,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "TracesData"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Batch",
+            "packed": false,
+            "prefabs": {}
+          }
+        ]
+      }
+    },
     "wire_format_version": 1
   },
-  "library_hash": "sha256:2507066ffe8070e0911f52d8c820eedc99f094a3bf1a853998224fa3ff739278",
+  "library_hash": "sha256:9dcf97b5abbef69698a5fec597252036cc92ed849c991d5d247f967e3af6a0df",
   "outputs": {
     "go/gen/dagr/reader.go": "sha256:52241688c1535ab8ea98b014aebebe26e8a3baab174840afe07ea0d4e0231363",
     "go/gen/dagr/writer.go": "sha256:c97292b9c07cc5378148bee22e8aa7c81374a6dbe628e090415abc55ffba75f3",
@@ -920,11 +983,12 @@
     "go/gen/otlp_traces.go": "sha256:bdc6f4df0855ca7c21ec782fd36947747b58b91ad439ccac5412ccd5c4061db0",
     "go/gen/otlp_traces_arena.go": "sha256:2db2542267e401c3c21a307414eeafa6749df08cb05870c9c4f2ceac43988967",
     "go/gen/otlp_traces_serde.go": "sha256:bfb73eb3ffd721fc9e52ebb7e920638f785590e3e874b89b954f4a33b69e5661",
-    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:51a0cc49a3cdbedccb78e47cfbda39e262528af009fcb36c2fe8459bf04a9681"
+    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:51a0cc49a3cdbedccb78e47cfbda39e262528af009fcb36c2fe8459bf04a9681",
+    "go/gen/spanlog/span_log.go": "sha256:b0cfdf9bc9fed231cf90574bb3837f7b8963f406c7e36c40ace73bb8820d6df5"
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-22T14:34:26.045232+00:00",
+    "generated_at": "2026-09-22T15:43:44.597759+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.0"
   },

@@ -1,0 +1,24 @@
+# Phase B — Dagr spool in, ordinary pipeline out.
+#
+# The receiver materialises each batch into pdata so an UNMODIFIED pipeline can consume
+# it. That is the slow path by construction (spec/38 §0.1: eager restore is ~1.6x slower
+# than a protobuf unmarshal) and it is here for compatibility, not for speed. The file
+# exporter writes OTLP JSON so the spans can be compared with what went in.
+receivers:
+  dagrfile:
+    path: ${SPOOL}
+
+exporters:
+  file:
+    path: ${DUMP}
+
+service:
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [dagrfile]
+      exporters: [file]

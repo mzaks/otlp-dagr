@@ -1,0 +1,27 @@
+# Phase A — OTLP in, Dagr spool out.
+#
+# This is the shape spec/38 §6.1 argues for: the spool IS the sending queue. There is no
+# second in-memory queue in front of it and no bbolt KV underneath it, because an
+# append-only doubly-linked DataSink already gives framing, self-description and O(1)
+# restart recovery.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+
+exporters:
+  dagrfile:
+    path: ${SPOOL}
+    resume: true
+
+service:
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [dagrfile]

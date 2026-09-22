@@ -29,7 +29,7 @@ place, with the direct builder preserved.
 """
 
 from dagr.dsl import (
-    DataGraph, Node, Enum, UnionType, required, t,
+    DataGraph, DataSink, ImportedGraph, Node, Enum, UnionType, raw, required, t,
     int_val, float_val, bool_val, string_val, b64_val, array_val,
     union_ref_val, ref_val, nil,
 )
@@ -134,9 +134,48 @@ OtlpTraces = DataGraph(
     ],
 )
 
+# ── The spool: an append-only, doubly-linked DataSink of OTLP batches ─────────
+#
+# `spec/11` §11: with `doubly_linked=True` every record also stores its byte span as a
+# reverse-delimited LEB at the record's END, so a reader can walk newest-first from EOF
+# with no forward pass and no index.  That is what makes this a WAL rather than a log
+# file: restart recovery reads backwards to the last intact record instead of scanning a
+# multi-GB spool forward, and a half-written tail is detectable rather than silently
+# truncating the stream (`spec/38` §6.1).
+#
+# The batch is carried as a `raw` EMBEDDED GRAPH (`spec/18` §11), not as a flattened span
+# record.  A `raw` sink field must target an ImportedType — a node from an external
+# DataGraph, never a sink-local node — because the leaf must be serialized in the target
+# graph's OWN format (cycles, dedup, alignment), which only a real graph has.  The
+# consequences are exactly what an exporter/receiver pair wants:
+#
+#   * the exporter's job is "frame and append" — the bytes the direct builder produced are
+#     stored verbatim, so exporter output is byte-identical to `StreamBuilder` output;
+#   * the receiver gets the blob back as a sub-slice of the mapped file, so forwarding a
+#     batch untouched costs no copy and no decode (`spec/38` §5.2);
+#   * the leaf is a genuine standalone Dagr buffer — it pops back out and reads through
+#     OtlpTraces' normal readers, including `dagr graph-explorer`.
+#
+# `received_unix_nano` and `span_count` are the sink's OWN fields, and they are the whole
+# point of the envelope: a reverse reader answers "the last N batches, m spans" by reading
+# two packed scalars per record and never opening the blob at all.
+SpanLog = DataSink(
+    'SpanLog',
+    imports=[ImportedGraph(OtlpTraces)],
+    doubly_linked=True,
+    node_types=[
+        Node('Batch', fields=[
+            'received_unix_nano' >> t.u64 >> required,
+            'span_count' >> t.u32 >> required,
+            'traces' >> t.ref("TracesData") >> raw >> required,
+        ]),
+    ],
+)
+
+
 library = Library(
     'otlp_dagr',
-    schemas=[OtlpTraces],
+    schemas=[OtlpTraces, SpanLog],
     targets=[
         # The Go emitter always writes the lazy accessors, the arena, the serializer
         # and the direct builder (spec/37 §16) — there is no feature list to opt into.

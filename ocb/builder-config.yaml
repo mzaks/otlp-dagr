@@ -1,0 +1,33 @@
+# ocb manifest for a collector that speaks Dagr at its edges (spec/38 §5.3, §6.1.1).
+#
+# `dagrfile` appears twice on purpose — once as an exporter and once as a receiver — and
+# that pair is the whole artefact: OTLP in, a Dagr spool on disk, and the same spool back
+# into an unmodified pipeline. The otlp receiver and the file exporter are here only so
+# the round trip has a real source and a checkable sink.
+#
+# ROOT and OTELCOL_VERSION are substituted by roundtrip.sh; the local `replaces` are what
+# let ocb build against this working tree rather than a published module.
+dist:
+  name: otelcol-dagr
+  description: OpenTelemetry Collector with the otlp-dagr file exporter and receiver
+  output_path: ${ROOT}/ocb/build
+  otelcol_version: ${OTELCOL_VERSION}
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v${OTELCOL_VERSION}
+  - gomod: otlpdagr v0.0.0
+    import: otlpdagr/receiver
+    name: dagrfilereceiver
+
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v${OTELCOL_VERSION}
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v${CONTRIB_VERSION}
+  - gomod: otlpdagr v0.0.0
+    import: otlpdagr/exporter
+    name: dagrfileexporter
+
+replaces:
+  - otlpdagr => ${ROOT}/go
+  # otlp-dagr's generated Go module. It is gitignored: `dagr build` (./regen.sh) writes
+  # it from schema.py and the committed dagr.lock.json receipt.
+  - otlptraces => ${ROOT}/go/gen
