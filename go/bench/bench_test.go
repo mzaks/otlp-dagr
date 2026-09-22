@@ -659,3 +659,53 @@ func BenchmarkEncode_DagrDirectAppend(b *testing.B) {
 		sink += uint64(len(dst))
 	}
 }
+
+// ── the value tree, built into reused scratch ────────────────────────────────
+//
+// Once Dagr's serializer stopped allocating, 99.9% of what the encode path allocated
+// was this bridge building a fresh value tree per batch — ~11 allocations per span.
+// Scratch sizes the backings once from a counting pass over pdata and then fills them
+// in place, so the tree borrows storage the builder owns and reuses.
+
+func TestReuseBuilderMatches(t *testing.T) {
+	w := pdatabridge.NewReuseBuilder()
+	// twice, because the second call is the one that reuses the scratch
+	for i := 0; i < 2; i++ {
+		if got := w.BuildAppend(nil, traces); !bytes.Equal(got, dagrBytes) {
+			t.Fatalf("pass %d: reuse builder diverged: %d B vs %d B", i, len(got), len(dagrBytes))
+		}
+	}
+	// and interleaved with a different-sized batch, to catch stale sub-slices
+	small := fixture.TracesN(7)
+	smallWant := pdatabridge.ToBytes(small)
+	for i := 0; i < 3; i++ {
+		if got := w.BuildAppend(nil, small); !bytes.Equal(got, smallWant) {
+			t.Fatalf("small pass %d diverged", i)
+		}
+		if got := w.BuildAppend(nil, traces); !bytes.Equal(got, dagrBytes) {
+			t.Fatalf("large pass %d diverged", i)
+		}
+	}
+}
+
+func BenchmarkEncode_DagrTreeOnlyReuse(b *testing.B) {
+	w := pdatabridge.NewReuseBuilder()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		sink += uint64(w.TreeOnly(traces))
+	}
+}
+
+func BenchmarkEncode_DagrReuseAppend(b *testing.B) {
+	w := pdatabridge.NewReuseBuilder()
+	dst := make([]byte, 0, len(dagrBytes)+64)
+	if got := w.BuildAppend(dst[:0], traces); !bytes.Equal(got, dagrBytes) {
+		b.Fatal("diverged")
+	}
+	b.SetBytes(int64(len(dagrBytes)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		dst = w.BuildAppend(dst[:0], traces)
+		sink += uint64(len(dst))
+	}
+}

@@ -148,11 +148,13 @@ protobuf.** The win exists only for a consumer that keeps the buffer.
 
 ```
                               ns/op        B/op   allocs/op
-Encode_ProtoMarshal           78003      237579           1
-Encode_DagrDirect            338252     1280835        5647   one-shot builder
-Encode_DagrDirectAppend      277692      528324        5633   reused builder + dst
-  ├─ DagrTreeOnly            144763      527042        5628   bridge: pdata → value tree
-  └─ DagrSerializeAppend     136560         753           0   Dagr: value tree → bytes
+Encode_ProtoMarshal           78445      237570           1
+Encode_DagrDirect            322773     1280841        5647   one-shot builder
+Encode_DagrDirectAppend      265312      527683        5630   reused builder + dst
+  ├─ DagrTreeOnly            141353      527042        5628     …fresh value tree
+  └─ DagrSerializeAppend     126405         376           0     Dagr: tree → bytes
+Encode_DagrReuseAppend       206989       52529        3317   + reused tree scratch
+  └─ DagrTreeOnlyReuse        81063       52126        3316     …bridge fill only
 ```
 
 The first version of this benchmark found the Dagr serializer doing **831 allocations
@@ -165,8 +167,18 @@ and 1.28 MB per batch**. Two fixes in Dagr (`spec/32 §1.46–1.47`) took it to 
   copying the whole 228 KB record. `BuildAppend(dst, root)` — the Go analogue of Rust's
   `write_into` — appends into a caller-owned slice.
 
-**Serializing an OTLP batch now allocates nothing**, and the step went 287 µs → 137 µs
-(2.10×). End to end the gap against `MarshalTraces` narrowed from **5.3× to 3.56×**.
+**Serializing an OTLP batch now allocates nothing**, and with `StoreLEB`'s magnitude
+fast path (`spec/32 §1.49`) the step went 287 µs → 126 µs (2.27×).
+
+Then the bridge stopped allocating a fresh value tree per batch. `pdatabridge/scratch.go`
+fills the tree into storage it owns and reuses; the trick that makes reuse safe is
+**sizing first** — every node's children are handed to the builder as a sub-slice of a
+shared backing, so a mid-fill `append` that grew the backing would invalidate sub-slices
+already handed out. A counting pass over pdata (all `Len()` calls) gives exact totals, the
+backings grow once, and the fill only writes indices that already exist. The tree step
+went **141 µs → 81 µs** and end to end **265 µs → 207 µs**.
+
+**Against `MarshalTraces` the gap is now 2.64×, from 5.3×.**
 
 Two things still stand between Go and the Rust result:
 
@@ -175,14 +187,21 @@ Two things still stand between Go and the Rust result:
    allocation** for the whole 234 KB batch. There is no "convert to wire form" step to
    beat, which is exactly the advantage the Rust comparison (prost, from an owned tree)
    did not have to face.
-2. **This bridge's value tree is now the whole remaining cost** — 52% of the time and
-   99.9% of the allocations. Closing it means a builder that walks pdata accessors
-   straight to bytes with no intermediate tree; that work is in `otlp-dagr`, not Dagr.
+2. **A true no-tree walker is worth ~81 µs and no more.** Serializing alone is 126 µs
+   against protobuf's 78 µs, so even a zero-cost pdata walker lands at **1.61×** — it
+   halves the remaining gap and does not win it. It also needs a real Dagr feature: the
+   Go direct builder consumes value structs, so streaming from pdata means a
+   second, source-driven store path generated per node. That is a `spec/33` addition,
+   and it should be weighed against that 1.61× ceiling.
 
-(One idea was tried and reverted: typed payload slots on the generated union value,
-instead of Go boxing every string into an `any`. It cut the tree's allocations 2.4× and
-ran 29–47% *slower*, because the slots widen the value from ~24 to ~80 bytes and the tree
-is copied per element. `spec/32 §1.48`.)
+**The last allocations are not the tree's.** 97.2% of what the reused-scratch path still
+allocates is Go boxing a `string` into the generated union value's `any`. Giving the value
+a dedicated `str` slot removes them — **154 allocations per batch instead of 3,317** — and
+costs **7.8%** wall-clock, because the serializer reads every widened element as well as
+the filler writing it. Reverted as Dagr's default; `spec/32 §1.48` and `§1.50` have both
+measurements. It is a legitimate choice for a collector that is GC-bound rather than
+throughput-bound — which is what `pdata` is actually criticised for — just not a silent
+one.
 
 ## What this says about the next step
 
@@ -193,12 +212,14 @@ is copied per element. `spec/32 §1.48`.)
 | **Reads, large-array sweep** | **fixed** — 9.3× via the new `All()` / `Iter()`, linear scaling, 0 allocs. `At(i)` in a loop is still O(n²) by construction. |
 | **Validated open** | 3.2× a protobuf decode. Fine in-process, a real cost on an untrusted hop. |
 | **Materialise to pdata** | loses, as designed. Do not build a pipeline that does this. |
-| **Encode from pdata** | **loses, 3.56× — down from 5.3×.** The Dagr serializer is fixed (0 allocs, 2.10× faster); what remains is this bridge's value tree. |
+| **Encode from pdata** | **loses, 2.64× — down from 5.3×.** Dagr's serializer allocates nothing and is 2.27× faster; the bridge reuses its tree scratch. A zero-cost no-tree walker would reach 1.61×, no further. |
 
 So the §14 step-1 gate — "if this does not win decisively on allocations, stop" — is
 **passed**; step 2 (the lazy array iterator) is **done**; step 3 (the direct builder's
-allocation profile) is **half done** — the Dagr serializer allocates nothing now, and the
-remaining work is a pdata-walking builder here, with no intermediate value tree.
+allocation profile) is **done on both sides** — Dagr's serializer allocates nothing, and
+the bridge reuses its tree scratch. What is left is a source-driven store path in Dagr's
+Go direct builder, whose ceiling is 1.61× protobuf; whether that is worth a `spec/33`
+feature is an open question, not a pending task.
 
 ## Licence
 
