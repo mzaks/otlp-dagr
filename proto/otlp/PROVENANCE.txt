@@ -1,0 +1,4 @@
+Vendored verbatim from open-telemetry/opentelemetry-proto @ main branch tarball, fetched 2026-09-21 (Apache-2.0).
+Only the files the traces signal needs are copied: common, resource, trace.
+Re-vendor by copying opentelemetry/proto/{common,resource,trace}/v1/*.proto from
+that repository over this tree; nothing here is edited.
