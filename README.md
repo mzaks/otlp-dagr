@@ -148,13 +148,14 @@ protobuf.** The win exists only for a consumer that keeps the buffer.
 
 ```
                               ns/op        B/op   allocs/op
-Encode_ProtoMarshal           75730      237568           1
+Encode_ProtoMarshal           77930      237570           1
 Encode_DagrDirect            280000     1228000        2331   one-shot builder
 Encode_DagrDirectAppend      218818      475832        2313   reused builder + dst
   ├─ DagrTreeOnly             97858      475217        2312     …fresh value tree
   └─ DagrSerializeAppend     122886         376           0     Dagr: tree → bytes
-Encode_DagrReuseAppend       165873         679           0   + reused tree scratch
-  └─ DagrTreeOnlyReuse        42666         302           0     …bridge fill only
+Encode_DagrReuseAppend       147772         271           0   + reused tree scratch
+  ├─ DagrTreeOnlyReuse        43055         121           0     …bridge fill only
+  └─ DagrSerializeAppend     103243         150           0     …Dagr, fused stores
 ```
 
 **The whole encode path allocates nothing.**
@@ -195,7 +196,14 @@ the width of `{tag, any}`**, so nothing pays for it on the read side:
   end to end   207.0 µs / 3,317     165.9 µs / 0 allocs   1.25×
 ```
 
-**Against `MarshalTraces` the gap is now 2.14×, from 5.3×.**
+Finally the serializer's *call shape*. Dagr writes the same number of varints gogo does —
+about six per attribute — so the gap was never the encoding: it was that gogo's
+`MarshalToSizedBuffer` keeps its buffer and cursor in registers for a whole message, while
+every Dagr store reloaded a three-word slice header and a cursor through a pointer,
+**47,170 times per batch**. Fusing payload + length + tag into one reservation cut that to
+31,372 stores and took serialize-only **122.9 µs → 103.2 µs** (`spec/32 §1.52`).
+
+**Against `MarshalTraces` the gap is now 1.90×, from 5.3×.**
 
 Two things still stand between Go and the Rust result:
 
@@ -204,9 +212,14 @@ Two things still stand between Go and the Rust result:
    allocation** for the whole 234 KB batch. There is no "convert to wire form" step to
    beat, which is exactly the advantage the Rust comparison (prost, from an owned tree)
    did not have to face.
-2. **A true no-tree walker is worth ~43 µs and no more.** Serializing alone is 123 µs
-   against protobuf's ~76 µs, so even a zero-cost pdata walker lands at **1.61×** — and
-   the tree fill it would remove is now only 43 µs of the 166. It also needs a real Dagr feature: the
+2. **A true no-tree walker is worth ~43 µs and no more.** Serializing alone is 103 µs
+   against protobuf's ~78 µs, so even a zero-cost pdata walker lands at **1.33×** — and
+   the tree fill it would remove is only 43 µs of the 148.
+3. **The last of the serializer gap is call shape, and it is prototyped.** Giving the
+   direct builder's stores a local cursor instead of `*Builder` — measured by hand-
+   converting one node type — takes end-to-end 146.8 → 129.1 µs, i.e. serialize to
+   **1.13× protobuf**. The primitives are in Dagr and gated; the generator conversion is
+   scoped in `spec/32 §1.53`. It also needs a real Dagr feature: the
    Go direct builder consumes value structs, so streaming from pdata means a
    second, source-driven store path generated per node. That is a `spec/33` addition,
    and it should be weighed against that 1.61× ceiling.
@@ -225,7 +238,7 @@ and the correction in `§1.51`.
 | **Reads, large-array sweep** | **fixed** — 9.3× via the new `All()` / `Iter()`, linear scaling, 0 allocs. `At(i)` in a loop is still O(n²) by construction. |
 | **Validated open** | 3.2× a protobuf decode. Fine in-process, a real cost on an untrusted hop. |
 | **Materialise to pdata** | loses, as designed. Do not build a pipeline that does this. |
-| **Encode from pdata** | **loses, 2.14× — down from 5.3×, and now allocation-free end to end.** A zero-cost no-tree walker would reach 1.61×, no further. |
+| **Encode from pdata** | **loses, 1.90× — down from 5.3×, and allocation-free end to end.** A local cursor in the generated stores is prototyped at 1.13× for the serialize step. |
 
 So the §14 step-1 gate — "if this does not win decisively on allocations, stop" — is
 **passed**; step 2 (the lazy array iterator) is **done**; step 3 (the direct builder's
