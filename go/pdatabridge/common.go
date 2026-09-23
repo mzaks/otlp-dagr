@@ -302,10 +302,9 @@ func putSlice(dst pcommon.Slice, v g.AnyValuePackedView, depth int) {
 // putKvlist copies a kvlist_value. Its elements are KeyValue nodes, so they come through
 // the node accessors rather than the union array view.
 func putKvlist(dst pcommon.Map, v g.AnyValuePackedView, depth int) {
-	n := v.KvlistValueLen()
-	dst.EnsureCapacity(n)
-	for i := 0; i < n; i++ {
-		kv := v.KvlistValueAt(i)
+	it := v.KvlistValueIter()
+	dst.EnsureCapacity(it.Len())
+	for kv, ok := it.Next(); ok; kv, ok = it.Next() {
 		key, ok := kv.Key()
 		if !ok {
 			continue

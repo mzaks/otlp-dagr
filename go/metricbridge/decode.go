@@ -94,9 +94,8 @@ func putMetric(dst pmetric.Metric, src g.MetricAccessor) {
 			putExpHistogramPoint(out.DataPoints().AppendEmpty(), dp)
 		}
 	case g.MetricDataTagSummary:
-		s := data.Summary()
 		out := dst.SetEmptySummary()
-		it := s.DataPointsIter()
+		it := data.SummaryIter()
 		for dp, ok := it.Next(); ok; dp, ok = it.Next() {
 			putSummaryPoint(out.DataPoints().AppendEmpty(), dp)
 		}

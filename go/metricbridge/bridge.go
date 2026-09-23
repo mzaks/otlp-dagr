@@ -96,9 +96,8 @@ func toMetric(m pmetric.Metric) d.Metric {
 			AggregationTemporality: nz(d.AggregationTemporality(h.AggregationTemporality())),
 		}))
 	case pmetric.MetricTypeSummary:
-		out.Data = some(d.MetricDataSummary(d.Summary{
-			DataPoints: optSlice(summaryPoints(m.Summary().DataPoints())),
-		}))
+		// Summary has no node of its own in the schema: the variant IS the array.
+		out.Data = some(d.MetricDataSummary(summaryPoints(m.Summary().DataPoints())))
 	}
 	return out
 }

@@ -67,7 +67,7 @@ place, with the direct builder preserved.
 """
 
 from dagr.dsl import (
-    DataGraph, DataSink, ImportedGraph, Node, Enum, UnionType, raw, required, t,
+    DataGraph, DataSink, ImportedGraph, Node, Enum, UnionType, raw, required, t, timestamp,
     int_val, float_val, bool_val, string_val, b64_val, array_val,
     union_ref_val, ref_val, nil,
 )
@@ -177,7 +177,7 @@ OtlpTraces = DataGraph(
             5: 'SPAN_KIND_CONSUMER',
         }, capacity=255),
         Node('Event', fields=[
-            'time_unix_nano' >> t.u64 >> raw,
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'name' >> t.utf8,
             'attributes' >> t.ref("KeyValue").array,
             'dropped_attributes_count' >> t.u32,
@@ -198,8 +198,8 @@ OtlpTraces = DataGraph(
             'flags' >> t.u32,
             'name' >> t.utf8,
             'kind' >> t.ref("SpanKind"),
-            'start_time_unix_nano' >> t.u64 >> raw,
-            'end_time_unix_nano' >> t.u64 >> raw,
+            'start_time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
+            'end_time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'attributes' >> t.ref("KeyValue").array,
             'dropped_attributes_count' >> t.u32,
             'events' >> t.ref("Event").array,
@@ -260,7 +260,10 @@ OtlpMetrics = DataGraph(
             ('sum', t.ref("Sum")),
             ('histogram', t.ref("Histogram")),
             ('exponential_histogram', t.ref("ExponentialHistogram")),
-            ('summary', t.ref("Summary")),
+            # Summary is collapsed into the variant: it is a node holding one array and
+            # nothing else, and OTLP documents it as legacy ("not recommended for new
+            # applications"), so it will not grow a field that would need the node back.
+            ('summary', t.ref("SummaryDataPoint").array),
         ]),
         Node('Metric', fields=[
             'name' >> t.utf8,
@@ -285,17 +288,14 @@ OtlpMetrics = DataGraph(
             'data_points' >> t.ref("ExponentialHistogramDataPoint").array,
             'aggregation_temporality' >> t.ref("AggregationTemporality"),
         ], packed=True),
-        Node('Summary', fields=[
-            'data_points' >> t.ref("SummaryDataPoint").array,
-        ], packed=True),
         UnionType('NumberValue', types=[
             ('as_double', t.f64),
             ('as_int', t.i64),
         ]),
         Node('NumberDataPoint', fields=[
             'attributes' >> t.ref("KeyValue").array,
-            'start_time_unix_nano' >> t.u64 >> raw,
-            'time_unix_nano' >> t.u64 >> raw,
+            'start_time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'exemplars' >> t.ref("Exemplar").array,
             'flags' >> t.u32,
             'value' >> t.ref('NumberValue'),
@@ -306,8 +306,8 @@ OtlpMetrics = DataGraph(
         # exactly when pdata's HasSum/HasMin/HasMax is true — 0.0 stays representable.
         Node('HistogramDataPoint', fields=[
             'attributes' >> t.ref("KeyValue").array,
-            'start_time_unix_nano' >> t.u64 >> raw,
-            'time_unix_nano' >> t.u64 >> raw,
+            'start_time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'count' >> t.u64,
             'sum' >> t.f64,
             'bucket_counts' >> t.u64.array,
@@ -317,14 +317,19 @@ OtlpMetrics = DataGraph(
             'min' >> t.f64,
             'max' >> t.f64,
         ], packed=True),
+        # FROZEN (positional): the one transpiled leaf stable enough to give up field tags
+        # — unchanged since exponential histograms stabilised, and there are two per data
+        # point. If OTLP ever changes it, the escape hatch is a new node on a NEW field of
+        # ExponentialHistogramDataPoint (packed, so it has the unknown-field tail), not an
+        # edit of this one (spec/38 §2.7).
         Node('Buckets', fields=[
             'offset' >> t.i32,
             'bucket_counts' >> t.u64.array,
-        ], packed=True),
+        ], packed=True, frozen=True),
         Node('ExponentialHistogramDataPoint', fields=[
             'attributes' >> t.ref("KeyValue").array,
-            'start_time_unix_nano' >> t.u64 >> raw,
-            'time_unix_nano' >> t.u64 >> raw,
+            'start_time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'count' >> t.u64,
             'sum' >> t.f64,
             'scale' >> t.i32,
@@ -343,8 +348,8 @@ OtlpMetrics = DataGraph(
         ], packed=True),
         Node('SummaryDataPoint', fields=[
             'attributes' >> t.ref("KeyValue").array,
-            'start_time_unix_nano' >> t.u64 >> raw,
-            'time_unix_nano' >> t.u64 >> raw,
+            'start_time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'count' >> t.u64,
             'sum' >> t.f64,
             'quantile_values' >> t.ref("ValueAtQuantile").array,
@@ -352,7 +357,7 @@ OtlpMetrics = DataGraph(
         ], packed=True),
         Node('Exemplar', fields=[
             'filtered_attributes' >> t.ref("KeyValue").array,
-            'time_unix_nano' >> t.u64 >> raw,
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'span_id' >> t.data,
             'trace_id' >> t.data,
             'value' >> t.ref('NumberValue'),
@@ -408,8 +413,8 @@ OtlpLogs = DataGraph(
             24: 'SEVERITY_NUMBER_FATAL4',
         }, capacity=255),
         Node('LogRecord', fields=[
-            'time_unix_nano' >> t.u64 >> raw,
-            'observed_time_unix_nano' >> t.u64 >> raw,
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
+            'observed_time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'severity_number' >> t.ref("SeverityNumber"),
             'severity_text' >> t.utf8,
             'body' >> t.ref("AnyValue"),
@@ -468,7 +473,7 @@ OtlpProfiles = DataGraph(
         Node('Profile', fields=[
             'sample_type' >> t.ref("ValueType"),
             'samples' >> t.ref("Sample").array,
-            'time_unix_nano' >> t.u64 >> raw,
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
             'duration_nano' >> t.u64,
             'period_type' >> t.ref("ValueType"),
             'period' >> t.i64,
@@ -493,7 +498,7 @@ OtlpProfiles = DataGraph(
             'values' >> t.i64.array,
             # raw on an int ARRAY is encoding tag 1 (fixed width, O(1) index): every
             # element is a wall-clock nanosecond timestamp, so LEB never wins.
-            'timestamps_unix_nano' >> t.u64.array >> raw,
+            'timestamps_unix_nano' >> t.u64.array >> raw >> timestamp(unit='ns'),
         ], packed=True),
         Node('Mapping', fields=[
             'memory_start' >> t.u64,
@@ -527,6 +532,108 @@ OtlpProfiles = DataGraph(
             'value' >> t.ref("AnyValue"),
             'unit_strindex' >> t.i32,
         ], packed=True),
+    ],
+)
+
+
+# ── Profiles as a GRAPH: references instead of dictionary indices ─────────────
+#
+# The experiment spec/38 §2.6 calls for, beside the faithful OtlpProfiles — not instead of
+# it. Everything protobuf spells as an integer index into a ProfilesDictionary table is a
+# node reference here, and the arena stores a shared node ONCE however many parents point
+# at it: a Function referenced from a thousand Lines, a Stack from a thousand Samples.
+# There is no dictionary and no string table — a string lives in the one node that owns
+# it.
+#
+# Every node that is shared, or lies on a path to one, is REGULAR (vtable), because a
+# packed parent re-inlines its children and would undo the sharing. That rules out the
+# direct builder (spec/33 §3 admits trees only): this graph encodes through the arena.
+# ValueType is never shared, so it stays packed and inline. Names follow the proto so the
+# two graphs read side by side; they never meet — separate graph, separate Go package.
+#
+# The bridge translates indices to references on the way in and rebuilds the dictionary
+# on the way out, so a round trip preserves every sample's MEANING (each resolved to its
+# stack of functions, attributes and link) but not the dictionary's order — which the
+# proto itself says a processor may rewrite ("MUST NOT have any observable effects").
+OtlpProfilesGraph = DataGraph(
+    'OtlpProfilesGraph',
+    root_type=t.ref('ProfilesData'),
+    imports=[ImportedGraph(OtlpCommon)],
+    node_types=[
+        Node('ProfilesData', fields=[
+            'resource_profiles' >> t.ref("ResourceProfiles").array,
+        ]),
+        Node('ResourceProfiles', fields=[
+            'resource' >> t.ref("Resource"),
+            'scope_profiles' >> t.ref("ScopeProfiles").array,
+            'schema_url' >> t.utf8,
+        ]),
+        Node('ScopeProfiles', fields=[
+            'scope' >> t.ref("InstrumentationScope"),
+            'profiles' >> t.ref("Profile").array,
+            'schema_url' >> t.utf8,
+        ]),
+        Node('ValueType', fields=[
+            'type' >> t.utf8,
+            'unit' >> t.utf8,
+        ], packed=True),
+        Node('Profile', fields=[
+            'sample_type' >> t.ref("ValueType"),
+            'samples' >> t.ref("Sample").array,
+            'time_unix_nano' >> t.u64 >> raw >> timestamp(unit='ns'),
+            'duration_nano' >> t.u64,
+            'period_type' >> t.ref("ValueType"),
+            'period' >> t.i64,
+            'profile_id' >> t.data,
+            'dropped_attributes_count' >> t.u32,
+            'original_payload_format' >> t.utf8,
+            'original_payload' >> t.data,
+            'attributes' >> t.ref("KeyValueAndUnit").array,
+        ]),
+        Node('Sample', fields=[
+            'stack' >> t.ref("Stack"),
+            'attributes' >> t.ref("KeyValueAndUnit").array,
+            'link' >> t.ref("Link"),
+            'values' >> t.i64.array,
+            'timestamps_unix_nano' >> t.u64.array >> raw >> timestamp(unit='ns'),
+        ]),
+        Node('Stack', fields=[
+            'locations' >> t.ref("Location").array,
+        ]),
+        Node('Location', fields=[
+            'mapping' >> t.ref("Mapping"),
+            'address' >> t.u64,
+            'lines' >> t.ref("Line").array,
+            'attributes' >> t.ref("KeyValueAndUnit").array,
+        ]),
+        # Not shared itself, but it points at a shared Function, so it must be regular.
+        Node('Line', fields=[
+            'function' >> t.ref("Function"),
+            'line' >> t.i64,
+            'column' >> t.i64,
+        ]),
+        Node('Function', fields=[
+            'name' >> t.utf8,
+            'system_name' >> t.utf8,
+            'filename' >> t.utf8,
+            'start_line' >> t.i64,
+        ]),
+        Node('Mapping', fields=[
+            'memory_start' >> t.u64,
+            'memory_limit' >> t.u64,
+            'file_offset' >> t.u64,
+            'filename' >> t.utf8,
+            'attributes' >> t.ref("KeyValueAndUnit").array,
+        ]),
+        Node('Link', fields=[
+            'trace_id' >> t.data,
+            'span_id' >> t.data,
+        ]),
+        Node('KeyValueAndUnit', fields=[
+            'key' >> t.utf8,
+            'value' >> t.ref("AnyValue"),
+            'unit' >> t.utf8,
+        ]),
     ],
 )
 
@@ -568,7 +675,7 @@ SpanLog = DataSink(
     doubly_linked=True,
     node_types=[
         Node('Batch', fields=[
-            'received_unix_nano' >> t.u64 >> required,
+            'received_unix_nano' >> t.u64 >> required >> timestamp(unit='ns'),
             'span_count' >> t.u32 >> required,
             'traces' >> t.ref("TracesData") >> raw >> required,
         ]),
@@ -581,7 +688,7 @@ MetricLog = DataSink(
     doubly_linked=True,
     node_types=[
         Node('Batch', fields=[
-            'received_unix_nano' >> t.u64 >> required,
+            'received_unix_nano' >> t.u64 >> required >> timestamp(unit='ns'),
             'data_point_count' >> t.u32 >> required,
             'metrics' >> t.ref("MetricsData") >> raw >> required,
         ]),
@@ -594,7 +701,7 @@ LogRecordLog = DataSink(
     doubly_linked=True,
     node_types=[
         Node('Batch', fields=[
-            'received_unix_nano' >> t.u64 >> required,
+            'received_unix_nano' >> t.u64 >> required >> timestamp(unit='ns'),
             'log_record_count' >> t.u32 >> required,
             'logs' >> t.ref("LogsData") >> raw >> required,
         ]),
@@ -607,7 +714,7 @@ ProfileLog = DataSink(
     doubly_linked=True,
     node_types=[
         Node('Batch', fields=[
-            'received_unix_nano' >> t.u64 >> required,
+            'received_unix_nano' >> t.u64 >> required >> timestamp(unit='ns'),
             'sample_count' >> t.u32 >> required,
             'profiles' >> t.ref("ProfilesData") >> raw >> required,
         ]),
@@ -619,7 +726,7 @@ library = Library(
     'otlp_dagr',
     # OtlpCommon is NOT listed: it has no root and is never serialized on its own — each
     # signal reaches it through its import.
-    schemas=[OtlpTraces, OtlpMetrics, OtlpLogs, OtlpProfiles,
+    schemas=[OtlpTraces, OtlpMetrics, OtlpLogs, OtlpProfiles, OtlpProfilesGraph,
              SpanLog, MetricLog, LogRecordLog, ProfileLog],
     targets=[
         # The Go emitter always writes the lazy accessors, the arena, the serializer
