@@ -136,7 +136,7 @@ func post(endpoint string, body []byte, retry time.Duration) error {
 // forward one, and the tail is intact.
 func checkSpool(args []string) error {
 	fs := flag.NewFlagSet("spool", flag.ExitOnError)
-	sigName := fs.String("signal", "traces", "traces | metrics | logs | profiles")
+	sigName := fs.String("signal", "", "traces | metrics | logs | profiles (default: the spool header's)")
 	path := fs.String("path", "", "spool file")
 	spans := fs.Int("spans", 0, "expected total spans (0 = do not check)")
 	batches := fs.Int("batches", 0, "expected batch count (0 = do not check)")
@@ -144,15 +144,21 @@ func checkSpool(args []string) error {
 	if *path == "" {
 		return errors.New("spool: -path is required")
 	}
-	sig, err := parseSignal(*sigName)
+	var r *spool.Reader
+	var err error
+	if *sigName == "" {
+		r, err = spool.OpenAny(*path)
+	} else {
+		var sig spool.Signal
+		if sig, err = parseSignal(*sigName); err != nil {
+			return err
+		}
+		r, err = spool.Open(*path, sig)
+	}
 	if err != nil {
 		return err
 	}
-
-	r, err := spool.Open(*path, sig)
-	if err != nil {
-		return err
-	}
+	sig := r.Signal()
 
 	// The tail first: a spool left by a killed exporter can end mid-record, and every
 	// count taken before that is known would be a count of an unknown prefix.
@@ -201,6 +207,7 @@ func checkSpool(args []string) error {
 	}
 	fmt.Printf("%s spool %s: %d bytes, %d batches, %d items, %s\n",
 		sig, *path, len(r.Bytes()), fwdBatches, fwdSpans, tail)
+	fmt.Printf("  header: %s\n", r.Header())
 	if len(newest) > 0 {
 		fmt.Printf("  newest batch: %d items, received %s, %d record bytes\n",
 			newestSpans, time.Unix(0, int64(newest[0].ReceivedUnixNano)).Format(time.RFC3339Nano),

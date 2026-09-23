@@ -597,9 +597,16 @@ walk reaches the same functions thousands of times and the lazy reader resolves 
 every time, where protobuf decodes each once. The graph wins only the shallow sweep
 (8.5× protobuf). Ship the faithful `OtlpProfiles`; `spec/38` §2.6 has the analysis.
 
-**One open hazard:** the four spools share one framing word and no header, so a spool
-does not record which signal it holds — point each pipeline at its own path. A header
-carrying the signal is part of `spec/38` D2.
+**Every spool says what it holds.** Each of the four sinks carries the same
+`SpoolHeader` (`schema.py`, Dagr `spec/15`), written once at stream open: the signal as
+a code and as its graph's name, the creation time, the receipt's `wire_format_version`,
+the vendored opentelemetry-proto version and the producer (the exporter's `producer`
+setting, by default the collector's `service.instance.id` plus the component ID). Opening
+or resuming a spool as the wrong signal is refused before anything is truncated,
+`spool.OpenAny` / `otlpdagrctl spool` read the signal off the header, and resume and ring
+compaction keep the header a spool was created with. It costs 91 bytes per spool, once, most of them the producer string.
+Adding it was a wire break (`spec/15` §11), and spools written before it fail with
+`spool.ErrNoHeader`.
 
 ## What this says about the next step
 
@@ -642,9 +649,9 @@ in RAM.
 So the shape the whole plan has been arguing toward is now assembled end to end: Dagr at
 the collector's edges (step 6), and the reads that justify it in a service that owns the
 buffer (step 7). What is left is §14 step 8 — the Arrow bridge and/or Go path query —
-over all four signals now that D6 is done, and the open decisions in §12, of which D2
-(the header, and with it the spools' signal identity) is the one that would change
-bytes first.
+over all four signals now that D6 is done, and the open decisions in §12. D2 is settled
+for the spools (they carry a header); what it still leaves open is a header on the
+signal GRAPHS themselves.
 
 ## Licence
 

@@ -676,10 +676,36 @@ OtlpProfilesGraph = DataGraph(
 # is per signal type, and so is the queue behind it. The count is the unit each
 # signal's pdata counts in (`SpanCount`, `DataPointCount`, `LogRecordCount`,
 # `SampleCount`).
+# THE HEADER (`spec/15`, D2 in `spec/38` §12). The four sinks would otherwise share one
+# framing word and nothing else, so a spool on disk could not say which signal it holds.
+# Every spool carries the SAME `SpoolHeader` (a flat packed node, written once at stream
+# open, `spec/15` §9: metadata only), so any of the four generated readers — or a tool
+# that knows none of them — reads it before choosing a decoder:
+#
+#   signal              0 traces, 1 metrics, 2 logs, 3 profiles — what code dispatches on
+#   signal_name         the embedded graph's name ("OtlpTraces", ...) — what a person reads
+#   created_unix_nano   when the spool was created; compaction keeps the original
+#   format_version      the receipt's wire_format_version the writer was built from
+#   otlp_proto_version  which vendored opentelemetry-proto the schema came from
+#   producer            the collector instance that wrote it
+#
+# A packed header keeps an unknown-field tail, so fields can be ADDED later without a
+# wire break; removing the header (or adding one, as this did) flips the framing word's
+# header bit and is breaking by design (`spec/15` §11).
+SpoolHeader = Node('SpoolHeader', fields=[
+    'signal' >> t.u8 >> required,
+    'signal_name' >> t.utf8 >> required,
+    'created_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),
+    'format_version' >> t.u32 >> required,
+    'otlp_proto_version' >> t.utf8,
+    'producer' >> t.utf8,
+])
+
 SpanLog = DataSink(
     'SpanLog',
     imports=[ImportedGraph(OtlpTraces)],
     doubly_linked=True,
+    header=SpoolHeader,
     node_types=[
         Node('Batch', fields=[
             'received_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),
@@ -693,6 +719,7 @@ MetricLog = DataSink(
     'MetricLog',
     imports=[ImportedGraph(OtlpMetrics)],
     doubly_linked=True,
+    header=SpoolHeader,
     node_types=[
         Node('Batch', fields=[
             'received_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),
@@ -706,6 +733,7 @@ LogRecordLog = DataSink(
     'LogRecordLog',
     imports=[ImportedGraph(OtlpLogs)],
     doubly_linked=True,
+    header=SpoolHeader,
     node_types=[
         Node('Batch', fields=[
             'received_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),
@@ -719,6 +747,7 @@ ProfileLog = DataSink(
     'ProfileLog',
     imports=[ImportedGraph(OtlpProfiles)],
     doubly_linked=True,
+    header=SpoolHeader,
     node_types=[
         Node('Batch', fields=[
             'received_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),

@@ -30,7 +30,7 @@ func TestStreamMatches(t *testing.T) {
 		}
 		const ts = 1_758_000_000_000_000_000
 		v := profilebridge.ToValue(pd)
-		w := profilelog.NewProfileLogWriter()
+		w := profilelog.NewProfileLogWriter(profilelog.SpoolHeader{})
 		if _, err := w.AppendBatch(profilelog.Batch{ReceivedUnixNano: ts, SampleCount: uint32(pd.SampleCount()),
 			ResourceProfiles: v.ResourceProfiles.V, Dictionary: v.Dictionary}); err != nil {
 			t.Fatal(err)

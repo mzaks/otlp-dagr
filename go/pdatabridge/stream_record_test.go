@@ -26,7 +26,7 @@ func TestStreamRecordMatches(t *testing.T) {
 		for _, ts := range []uint64{0, 1_758_000_000_000_000_000} {
 			got := enc.AppendRecord(nil, ts, td)
 
-			w := spanlog.NewSpanLogWriter()
+			w := spanlog.NewSpanLogWriter(spanlog.SpoolHeader{})
 			v := spanlog.Batch{ReceivedUnixNano: ts, SpanCount: uint32(td.SpanCount()),
 				ResourceSpans: pdatabridge.ToValue(td).ResourceSpans.V}
 			if _, err := w.AppendBatch(v); err != nil {

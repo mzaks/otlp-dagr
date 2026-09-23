@@ -55,7 +55,7 @@ type framedWriter interface {
 }
 
 type ops struct {
-	newWriter    func(io.Writer) framedWriter
+	newWriter    func(io.Writer, Header) framedWriter
 	recordsStart func(buf []byte) (int, error)
 }
 
@@ -135,7 +135,9 @@ func spanBatch(rec spanlog.SpanLogRecord) (Batch, bool) {
 }
 
 var spanOps = ops{
-	newWriter: func(w io.Writer) framedWriter { return spanW{spanlog.NewSpanLogStreamWriter(w)} },
+	newWriter: func(w io.Writer, h Header) framedWriter {
+		return spanW{spanlog.NewSpanLogStreamWriter(w, spanlog.SpoolHeader(h.dagrHeader()))}
+	},
 	recordsStart: func(buf []byte) (int, error) {
 		rd, err := spanlog.OpenSpanLogReader(buf)
 		if err != nil {
@@ -201,7 +203,9 @@ func metricBatch(rec metriclog.MetricLogRecord) (Batch, bool) {
 }
 
 var metricOps = ops{
-	newWriter: func(w io.Writer) framedWriter { return metricW{metriclog.NewMetricLogStreamWriter(w)} },
+	newWriter: func(w io.Writer, h Header) framedWriter {
+		return metricW{metriclog.NewMetricLogStreamWriter(w, metriclog.SpoolHeader(h.dagrHeader()))}
+	},
 	recordsStart: func(buf []byte) (int, error) {
 		rd, err := metriclog.OpenMetricLogReader(buf)
 		if err != nil {
@@ -269,7 +273,9 @@ func logBatch(rec logrecordlog.LogRecordLogRecord) (Batch, bool) {
 }
 
 var logOps = ops{
-	newWriter: func(w io.Writer) framedWriter { return logW{logrecordlog.NewLogRecordLogStreamWriter(w)} },
+	newWriter: func(w io.Writer, h Header) framedWriter {
+		return logW{logrecordlog.NewLogRecordLogStreamWriter(w, logrecordlog.SpoolHeader(h.dagrHeader()))}
+	},
 	recordsStart: func(buf []byte) (int, error) {
 		rd, err := logrecordlog.OpenLogRecordLogReader(buf)
 		if err != nil {
@@ -335,7 +341,9 @@ func profileBatch(rec profilelog.ProfileLogRecord) (Batch, bool) {
 }
 
 var profileOps = ops{
-	newWriter: func(w io.Writer) framedWriter { return profileW{profilelog.NewProfileLogStreamWriter(w)} },
+	newWriter: func(w io.Writer, h Header) framedWriter {
+		return profileW{profilelog.NewProfileLogStreamWriter(w, profilelog.SpoolHeader(h.dagrHeader()))}
+	},
 	recordsStart: func(buf []byte) (int, error) {
 		rd, err := profilelog.OpenProfileLogReader(buf)
 		if err != nil {

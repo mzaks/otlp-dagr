@@ -30,8 +30,8 @@ var errShutDown = errors.New("dagrfile: exporter is not running")
 // (profiles is `v1development` upstream and needs the `service.profilesSupport` gate).
 //
 // One component instance serves one pipeline, so each signal gets its own spool — point
-// each at its own path. A spool records no signal identity on the wire yet (spec/38 D2),
-// so two signals sharing one file is not detected; Validate cannot see the signal.
+// each at its own path. The spool's header records its signal (spec/38 D2), so resuming
+// a spool that another signal's exporter wrote fails at Start instead of mixing them.
 func NewFactory() exporter.Factory {
 	return xexporter.NewFactory(Type, createDefaultConfig,
 		xexporter.WithTraces(createTraces, component.StabilityLevelDevelopment),
@@ -41,7 +41,15 @@ func NewFactory() exporter.Factory {
 }
 
 func newBase(set exporter.Settings, cfg component.Config, sig spool.Signal) base {
-	return base{cfg: cfg.(*Config), log: set.Logger, now: time.Now, sig: sig}
+	c := cfg.(*Config)
+	producer := c.Producer
+	if producer == "" {
+		producer = set.ID.String()
+		if id, ok := set.Resource.Attributes().Get("service.instance.id"); ok && id.AsString() != "" {
+			producer = id.AsString() + "/" + producer
+		}
+	}
+	return base{cfg: c, log: set.Logger, now: time.Now, sig: sig, producer: producer}
 }
 
 func createTraces(_ context.Context, set exporter.Settings, cfg component.Config) (exporter.Traces, error) {
@@ -68,6 +76,8 @@ type base struct {
 	log *zap.Logger
 	now func() time.Time
 	sig spool.Signal
+	// producer goes into the header of a spool this exporter creates.
+	producer string
 
 	mu sync.Mutex
 	w  *spool.Writer
@@ -87,17 +97,17 @@ func (e *base) Start(_ context.Context, _ component.Host) error {
 	defer e.mu.Unlock()
 
 	if !e.cfg.Resume {
-		w, err := spool.Create(e.cfg.Path, e.sig)
+		w, err := spool.CreateWith(e.cfg.Path, spool.NewHeader(e.sig, e.producer))
 		if err != nil {
 			return err
 		}
 		e.w = w
 		e.log.Info("dagrfile: spool created", zap.String("path", e.cfg.Path),
-			zap.Stringer("signal", e.sig))
+			zap.Stringer("header", w.Header()))
 		return nil
 	}
 
-	w, rec, err := spool.Resume(e.cfg.Path, e.sig)
+	w, rec, err := spool.ResumeWith(e.cfg.Path, spool.NewHeader(e.sig, e.producer))
 	if err != nil {
 		return err
 	}
@@ -110,7 +120,7 @@ func (e *base) Start(_ context.Context, _ component.Host) error {
 			zap.Int64("valid_end", rec.ValidEnd))
 	} else {
 		e.log.Info("dagrfile: spool resumed", zap.String("path", e.cfg.Path),
-			zap.Stringer("signal", e.sig), zap.String("tail", rec.String()))
+			zap.Stringer("header", w.Header()), zap.String("tail", rec.String()))
 	}
 	return nil
 }

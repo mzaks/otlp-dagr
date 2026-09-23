@@ -153,7 +153,8 @@ func (r *Ring) Compact() error {
 	r.lastWalked = walked
 
 	tmp := r.path + ".compact"
-	w, err := spool.Create(tmp, spool.Traces)
+	// The compacted file is the same spool: it keeps the header it was created with.
+	w, err := spool.CreateWith(tmp, r.w.Header())
 	if err != nil {
 		return err
 	}

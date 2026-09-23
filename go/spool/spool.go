@@ -5,9 +5,10 @@
 //
 // The sink's wire shape (Dagr spec 11) is
 //
-//	[framing LEB] ( [typeId LEB] [content_size LEB] [packed body] [span RLEB] )*
+//	[framing LEB] [SpoolHeader] ( [typeId LEB] [content_size LEB] [packed body] [span RLEB] )*
 //
-// and the trailing reverse-delimited LEB is there because `doubly_linked=True`: it holds
+// (the header, header.go, says which signal the spool holds) and the trailing
+// reverse-delimited LEB is there because `doubly_linked=True`: it holds
 // the record's own byte length written backwards, so a reader that starts at EOF can step
 // to the record's first byte without having seen anything before it (spec 11 §11.4).
 // That is what makes restart recovery O(1) instead of O(spool): the only question after a
@@ -36,18 +37,28 @@ type Writer struct {
 	f   *os.File
 	w   framedWriter
 	sig Signal
+	hdr Header
 	n   int   // records appended by THIS writer
 	off int64 // file size when this writer opened it (0 for a fresh spool)
 }
 
-// Create starts a new spool for sig at path, truncating anything already there.
+// Create starts a new spool for sig at path, truncating anything already there, under
+// NewHeader(sig, "") — no producer named.
 func Create(path string, sig Signal) (*Writer, error) {
+	return CreateWith(path, NewHeader(sig, ""))
+}
+
+// CreateWith starts a new spool at path under header h (its Signal picks the sink).
+func CreateWith(path string, h Header) (*Writer, error) {
+	if err := h.Check(h.Signal); err != nil {
+		return nil, err
+	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return nil, err
 	}
-	w := &Writer{f: f, w: sig.ops().newWriter(f), sig: sig}
-	// Write the framing word up front: a spool opened and not yet written to is still a
+	w := &Writer{f: f, w: h.Signal.ops().newWriter(f, h), sig: h.Signal, hdr: h}
+	// Write the framing word and header up front: a spool opened and not yet written to is still a
 	// valid, empty stream, so a reader started before the first batch sees a stream
 	// rather than an empty file.
 	if err := w.w.EnsureFraming(); err != nil {
@@ -65,15 +76,36 @@ func Create(path string, sig Signal) (*Writer, error) {
 // tail costs a forward pass, and only once. Whatever it drops is reported in Recovery,
 // never silently kept.
 //
-// A missing or empty file is not an error — Resume creates the spool.
+// A missing or empty file is not an error — Resume creates the spool, under
+// NewHeader(sig, "").
 func Resume(path string, sig Signal) (*Writer, Recovery, error) {
+	return ResumeWith(path, NewHeader(sig, ""))
+}
+
+// ResumeWith is Resume that creates a missing spool under h. An existing spool keeps
+// the header it was created with — only its signal has to match h's; a spool of another
+// signal, or one without a header, is refused before anything is truncated.
+func ResumeWith(path string, h Header) (*Writer, Recovery, error) {
+	sig := h.Signal
 	st, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) || (err == nil && st.Size() == 0) {
-		w, cErr := Create(path, sig)
+		w, cErr := CreateWith(path, h)
 		return w, Recovery{Fresh: true}, cErr
 	}
 	if err != nil {
 		return nil, Recovery{}, err
+	}
+	onDisk, err := ReadHeaderFile(path)
+	if errors.Is(err, ErrHeaderTruncated) {
+		// Killed while writing the header: nothing after it can exist, so start over.
+		w, cErr := CreateWith(path, h)
+		return w, Recovery{Fresh: true, Torn: st.Size()}, cErr
+	}
+	if err != nil {
+		return nil, Recovery{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := onDisk.Check(sig); err != nil {
+		return nil, Recovery{}, fmt.Errorf("%s: %w", path, err)
 	}
 	rec, err := Recover(path, sig)
 	if err != nil {
@@ -83,8 +115,9 @@ func Resume(path string, sig Signal) (*Writer, Recovery, error) {
 	if err != nil {
 		return nil, rec, err
 	}
-	// The stream is already framed on disk. Hand the generated writer a destination that
-	// swallows its framing write and passes every record through, so an appended record
+	// The stream is already framed on disk, header included. Hand the generated writer a
+	// destination that swallows its framing write (the framing word and the header go out
+	// as ONE Write) and passes every record through, so an appended record
 	// is byte-identical to one written by a writer that had framed the file itself —
 	// TestResumeAfterCrashKeepsOneStream asserts exactly that, against a spool written
 	// in one run.
@@ -101,17 +134,17 @@ func Resume(path string, sig Signal) (*Writer, Recovery, error) {
 	//     1, so the generator emits no padding pass at all), but a schema that did would
 	//     need the writer to be resumable for real — an Open{S}Writer over an existing
 	//     stream, in the generator, rather than this wrapper.
-	sw := sig.ops().newWriter(&skipFraming{to: f})
+	sw := sig.ops().newWriter(&skipFraming{to: f}, onDisk)
 	if err := sw.EnsureFraming(); err != nil {
 		f.Close()
 		return nil, rec, err
 	}
-	return &Writer{f: f, w: sw, sig: sig, off: rec.ValidEnd}, rec, nil
+	return &Writer{f: f, w: sw, sig: sig, hdr: onDisk, off: rec.ValidEnd}, rec, nil
 }
 
-// skipFraming drops the first Write (the framing word the stream is already carrying)
-// and forwards every later one. The generated writer emits the framing as a single Write
-// before any record, so "the first Write" is exactly the framing word and nothing else.
+// skipFraming drops the first Write (the framing word and header the stream is already
+// carrying) and forwards every later one. The generated writer emits both as a single
+// Write before any record, so "the first Write" is exactly that and nothing else.
 type skipFraming struct {
 	to    io.Writer
 	begun bool
@@ -158,6 +191,9 @@ func (w *Writer) Appended() int { return w.n }
 // Signal is the spool's signal.
 func (w *Writer) Signal() Signal { return w.sig }
 
+// Header is the spool's header — for a resumed spool, the one it was created with.
+func (w *Writer) Header() Header { return w.hdr }
+
 // ── Reading ──────────────────────────────────────────────────────────────────
 
 // Batch is one spool record: the envelope fields, and the record itself as a sub-slice
@@ -176,6 +212,7 @@ type Batch struct {
 type Reader struct {
 	buf []byte
 	sig Signal
+	hdr Header
 }
 
 // Open reads path and validates the stream framing.
@@ -187,16 +224,36 @@ func Open(path string, sig Signal) (*Reader, error) {
 	return OpenBytes(buf, sig)
 }
 
-// OpenBytes is Open over bytes already in hand.
+// OpenBytes is Open over bytes already in hand. The header must name sig.
 func OpenBytes(buf []byte, sig Signal) (*Reader, error) {
-	if _, err := sig.ops().recordsStart(buf); err != nil {
+	h, _, err := ReadHeader(buf)
+	if err != nil {
 		return nil, err
 	}
-	return &Reader{buf: buf, sig: sig}, nil
+	if err := h.Check(sig); err != nil {
+		return nil, err
+	}
+	return &Reader{buf: buf, sig: sig, hdr: h}, nil
+}
+
+// OpenAny opens a spool of whichever signal its header names.
+func OpenAny(path string) (*Reader, error) {
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	h, _, err := ReadHeader(buf)
+	if err != nil {
+		return nil, err
+	}
+	return OpenBytes(buf, h.Signal)
 }
 
 // Signal is the spool's signal.
 func (r *Reader) Signal() Signal { return r.sig }
+
+// Header is the spool's header.
+func (r *Reader) Header() Header { return r.hdr }
 
 // Bytes is the spool's raw content.
 func (r *Reader) Bytes() []byte { return r.buf }
@@ -251,6 +308,8 @@ type Recovery struct {
 
 func (r Recovery) String() string {
 	switch {
+	case r.Fresh && r.Torn > 0:
+		return fmt.Sprintf("torn header: dropped %d bytes, spool recreated", r.Torn)
 	case r.Fresh:
 		return "fresh spool"
 	case r.Torn == 0:

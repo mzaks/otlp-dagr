@@ -361,3 +361,30 @@ func TestRingResumesAcrossRestart(t *testing.T) {
 		t.Fatalf("after three runs the ring holds %d spans over %d batches, want 15 over 3", spans, batches)
 	}
 }
+
+// Compaction rewrites the file but not the spool's identity: the header it was created
+// with — signal, producer, creation time — survives every rewrite.
+func TestRingCompactionKeepsTheHeader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ring.dagr")
+	r, _, err := store.OpenRing(path, store.RingOptions{MaxBatches: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := spool.ReadHeaderFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := pdatabridge.NewStreamBuilder()
+	for i := 0; i < 6; i++ {
+		if err := r.Append(enc.AppendRecord(nil, uint64(i), fixture.TracesN(2))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.Close()
+	if r.Compactions() == 0 {
+		t.Fatal("nothing compacted")
+	}
+	if got, err := spool.ReadHeaderFile(path); err != nil || got != created {
+		t.Fatalf("after compaction the header is %+v (%v), was %+v", got, err, created)
+	}
+}

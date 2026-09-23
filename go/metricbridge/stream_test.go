@@ -29,7 +29,7 @@ func TestStreamMatches(t *testing.T) {
 			t.Fatalf("%s: stream buffer %d bytes, value tree %d", name, len(got), len(want))
 		}
 		const ts = 1_758_000_000_000_000_000
-		w := metriclog.NewMetricLogWriter()
+		w := metriclog.NewMetricLogWriter(metriclog.SpoolHeader{})
 		if _, err := w.AppendBatch(metriclog.Batch{ReceivedUnixNano: ts, DataPointCount: uint32(md.DataPointCount()),
 			ResourceMetrics: metricbridge.ToValue(md).ResourceMetrics.V}); err != nil {
 			t.Fatal(err)

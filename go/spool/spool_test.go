@@ -19,7 +19,12 @@ func encode(t *testing.T, n int, ts uint64) []byte {
 
 func writeSpool(t *testing.T, path string, sizes ...int) [][]byte {
 	t.Helper()
-	w, err := spool.Create(path, spool.Traces)
+	return writeSpoolWith(t, path, spool.NewHeader(spool.Traces, "test"), sizes...)
+}
+
+func writeSpoolWith(t *testing.T, path string, h spool.Header, sizes ...int) [][]byte {
+	t.Helper()
+	w, err := spool.CreateWith(path, h)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -229,6 +234,10 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
+	created, err := spool.ReadHeaderFile(path)
+	if err != nil {
+		t.Fatalf("header: %v", err)
+	}
 	// Simulate a kill in the middle of writing a third record.
 	partial := encode(t, 12, 1002)
 	torn := append(append([]byte(nil), whole...), partial[:len(partial)/2]...)
@@ -242,6 +251,11 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 	}
 	if rec.Torn == 0 {
 		t.Fatalf("resume accepted a torn tail: %s", rec)
+	}
+	// Resume keeps the header the spool was created with — its creation time included —
+	// not the one Resume would have put on a fresh spool.
+	if w.Header() != created {
+		t.Fatalf("resumed writer has header %+v, the spool was created with %+v", w.Header(), created)
 	}
 	if rec.ValidEnd != int64(len(whole)) {
 		t.Fatalf("recovered to %d, want %d", rec.ValidEnd, len(whole))
@@ -273,9 +287,9 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 	}
 	// A record appended after a resume must be byte-identical to the same record written
 	// by a writer that framed the spool itself — otherwise "resume" quietly forks the
-	// format at every restart.
+	// format at every restart. Same header, so the whole file must match.
 	fresh := filepath.Join(t.TempDir(), "fresh.dagr")
-	writeSpool(t, fresh, 6, 8, 12)
+	writeSpoolWith(t, fresh, created, 6, 8, 12)
 	freshBytes, err := os.ReadFile(fresh)
 	if err != nil {
 		t.Fatalf("read fresh: %v", err)

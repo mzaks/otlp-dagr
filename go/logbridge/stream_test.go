@@ -29,7 +29,7 @@ func TestStreamMatches(t *testing.T) {
 			t.Fatalf("%s: stream buffer %d bytes, value tree %d", name, len(got), len(want))
 		}
 		const ts = 1_758_000_000_000_000_000
-		w := logrecordlog.NewLogRecordLogWriter()
+		w := logrecordlog.NewLogRecordLogWriter(logrecordlog.SpoolHeader{})
 		if _, err := w.AppendBatch(logrecordlog.Batch{ReceivedUnixNano: ts, LogRecordCount: uint32(md.LogRecordCount()),
 			ResourceLogs: logbridge.ToValue(md).ResourceLogs.V}); err != nil {
 			t.Fatal(err)

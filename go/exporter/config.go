@@ -37,6 +37,12 @@ type Config struct {
 	// process crash but not a machine one, which is the same promise the collector's
 	// own file storage makes by default.
 	Sync bool `mapstructure:"sync"`
+
+	// Producer is written into a NEW spool's header (spec/38 D2) to say who wrote it.
+	// Empty means the collector's `service.instance.id` and this component's ID
+	// ("<instance>/dagrfile/<name>"). A resumed spool keeps the producer it was created
+	// with.
+	Producer string `mapstructure:"producer"`
 }
 
 func (c *Config) Validate() error {

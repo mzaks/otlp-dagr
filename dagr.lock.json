@@ -4021,7 +4021,90 @@
     "sinks": {
       "LogRecordLog": {
         "doubly_linked": true,
-        "header": null,
+        "header": {
+          "fields": [
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "signal",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "u8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "signal_name",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "created_unix_nano",
+              "options": 9,
+              "timestamp": {
+                "epoch": "unix",
+                "unit": "ns"
+              },
+              "type": {
+                "kind": "u64"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "format_version",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "u32"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "otlp_proto_version",
+              "options": 0,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "producer",
+              "options": 0,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            }
+          ],
+          "frozen": false,
+          "kind": "node",
+          "name": "SpoolHeader",
+          "packed": false,
+          "prefabs": {}
+        },
         "imports": [
           {
             "graph": "OtlpLogs",
@@ -4087,7 +4170,90 @@
       },
       "MetricLog": {
         "doubly_linked": true,
-        "header": null,
+        "header": {
+          "fields": [
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "signal",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "u8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "signal_name",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "created_unix_nano",
+              "options": 9,
+              "timestamp": {
+                "epoch": "unix",
+                "unit": "ns"
+              },
+              "type": {
+                "kind": "u64"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "format_version",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "u32"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "otlp_proto_version",
+              "options": 0,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "producer",
+              "options": 0,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            }
+          ],
+          "frozen": false,
+          "kind": "node",
+          "name": "SpoolHeader",
+          "packed": false,
+          "prefabs": {}
+        },
         "imports": [
           {
             "graph": "OtlpMetrics",
@@ -4153,7 +4319,90 @@
       },
       "ProfileLog": {
         "doubly_linked": true,
-        "header": null,
+        "header": {
+          "fields": [
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "signal",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "u8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "signal_name",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "created_unix_nano",
+              "options": 9,
+              "timestamp": {
+                "epoch": "unix",
+                "unit": "ns"
+              },
+              "type": {
+                "kind": "u64"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "format_version",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "u32"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "otlp_proto_version",
+              "options": 0,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "producer",
+              "options": 0,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            }
+          ],
+          "frozen": false,
+          "kind": "node",
+          "name": "SpoolHeader",
+          "packed": false,
+          "prefabs": {}
+        },
         "imports": [
           {
             "graph": "OtlpProfiles",
@@ -4232,7 +4481,90 @@
       },
       "SpanLog": {
         "doubly_linked": true,
-        "header": null,
+        "header": {
+          "fields": [
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "signal",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "u8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "signal_name",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "created_unix_nano",
+              "options": 9,
+              "timestamp": {
+                "epoch": "unix",
+                "unit": "ns"
+              },
+              "type": {
+                "kind": "u64"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "format_version",
+              "options": 1,
+              "timestamp": null,
+              "type": {
+                "kind": "u32"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "otlp_proto_version",
+              "options": 0,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            },
+            {
+              "alignment": null,
+              "capacity": null,
+              "default": null,
+              "index": null,
+              "name": "producer",
+              "options": 0,
+              "timestamp": null,
+              "type": {
+                "kind": "utf8"
+              }
+            }
+          ],
+          "frozen": false,
+          "kind": "node",
+          "name": "SpoolHeader",
+          "packed": false,
+          "prefabs": {}
+        },
         "imports": [
           {
             "graph": "OtlpTraces",
@@ -4299,13 +4631,13 @@
     },
     "wire_format_version": 1
   },
-  "library_hash": "sha256:d663b302097e46d0f58df1e176a5cb4320203f50cf7cddc7630db3f7dd242ad0",
+  "library_hash": "sha256:8468519a50b362b2a8d4ac3e4310f6a7130acf316790ea14561239f2a4904b37",
   "outputs": {
     "go/gen/dagr/reader.go": "sha256:52241688c1535ab8ea98b014aebebe26e8a3baab174840afe07ea0d4e0231363",
     "go/gen/dagr/writer.go": "sha256:7eee25743b708004edf672cc9bff8cf14ed057a98d357f45badee2c122d94216",
     "go/gen/go.mod": "sha256:a31961fab517fcdc05aefcf74884d3f0c15eef029955a4e8c25b7a967a3509e9",
-    "go/gen/logrecordlog/log_record_log.go": "sha256:19379be26833862ffd598b6620e6938eaed3326782e58adf780e8edbe8b97d3f",
-    "go/gen/metriclog/metric_log.go": "sha256:160ceec4f337d101e02fcae613659b3eaf012339c77a016addd74ad248631c75",
+    "go/gen/logrecordlog/log_record_log.go": "sha256:ac355361e20f1eb3b5bda413d5d3212f82832b6206f1411d1115bb272c3f666b",
+    "go/gen/metriclog/metric_log.go": "sha256:a72e4e8371a9c1215fa0c620bb3077319bdbba62634850023bea406bd494fd47",
     "go/gen/otlplogs/otlp_logs.go": "sha256:8df5743b8a3d12ee18dd0713c2fc832966c92c74faf6bc6b79c945f632b046ef",
     "go/gen/otlplogs/otlp_logs_arena.go": "sha256:9ecc209f2ffdd09fc2dc26a0c8789d6f47631520ccf12da917f91b0d60c6cd94",
     "go/gen/otlplogs/otlp_logs_serde.go": "sha256:aded01cb23afe6cc5e24758090c58046da3936a3ce3f3b62b5830c7e548f5bd8",
@@ -4325,14 +4657,14 @@
     "go/gen/otlptraces/otlp_traces_arena.go": "sha256:14dcfbd2f9153f4c7051d59ee7b9cc84e6db1c6f7ca7e250c8df9a976716c201",
     "go/gen/otlptraces/otlp_traces_serde.go": "sha256:16ffdca0e57707653966d97eb2b42f088879aa20e0f536ccdb2feadd33cf1e43",
     "go/gen/otlptracesdirect/otlp_traces.go": "sha256:78c6ccb3588376b5917e7ef7720046e4d27c99ee73759bc0707d643633a29a25",
-    "go/gen/profilelog/profile_log.go": "sha256:891d179e8d85667fcbe1598bc5c0339d9c4e2649f1d60a736f5106b370548d3b",
-    "go/gen/spanlog/span_log.go": "sha256:e41dae0114c7b906edad61dd1d4a8acb8e1393d480c24abbfe2c3324ff5b92d3",
+    "go/gen/profilelog/profile_log.go": "sha256:7bd200463996bfc5ff91398dc571efd9fb5f41e10f5d3ad22f41d359d553fa32",
+    "go/gen/spanlog/span_log.go": "sha256:67360a24d6c3c8809ef005375361403afe2871f31ac1d2a3d65f063af64d6e6d",
     "rust/gen/Cargo.toml": "sha256:c01c54ed4c18b431815af8668b155f35e7d41084aa7f97aff7ce01dfbcb7f9b3",
     "rust/gen/build.rs": "sha256:ef0170542199cbb707b78fb06eac8978eceb6bf64e710aabd54943134da4a62c",
     "rust/gen/src/dagr_runtime.rs": "sha256:28be82c1b570b7bdc3c9db9b7c90a18bc8e98c55cb7edd161e580dd39f57bab1",
     "rust/gen/src/lib.rs": "sha256:2192a11e5a5651ce8465348740e2605c7d553204ff537acaf7d99f17bdb56a15",
-    "rust/gen/src/log_record_log_sink.rs": "sha256:1aac131ae1302ccaf9f470d6c7d38e9474a03d2aff16186144979bc44ec63903",
-    "rust/gen/src/metric_log_sink.rs": "sha256:5c3c110b78142146c37dfddd7e810e592687578fd1c93435049165f5f69fa5de",
+    "rust/gen/src/log_record_log_sink.rs": "sha256:4d7d2615cb724c7a2efadaa97731f566ecfaa11cddbbfd4c6a7551b4d5954ecb",
+    "rust/gen/src/metric_log_sink.rs": "sha256:e8903d6af5ebf0baeeb0b76443d101d92e8225860b0a53241ab00f147a18bf9f",
     "rust/gen/src/otlp_logs.rs": "sha256:610ed3abd95aaccd79ed89c96eb7a51c128b979d4ce7730ef28c6adbae274529",
     "rust/gen/src/otlp_logs_arrow.rs": "sha256:e06201e12ef72b697b88eff1192c423272950f03b8606f1a8f445335b1121638",
     "rust/gen/src/otlp_logs_core.rs": "sha256:6984e96ef9fb383da67accc38e0c6489bd6d3aefb7be95b7b0543a187779692c",
@@ -4352,12 +4684,12 @@
     "rust/gen/src/otlp_traces_arrow.rs": "sha256:90a338a08e386a158d1908702ec24bed6d65b11b884d63a09479a6eef66d35c3",
     "rust/gen/src/otlp_traces_core.rs": "sha256:7d1a354d75dbc51fd77887db22dda297d83c16917604025464e26ee24496c9df",
     "rust/gen/src/otlp_traces_lazy.rs": "sha256:37ab2a88e766402428064091d977262cfcb33cb3fa1b3e924bbeae456dce115a",
-    "rust/gen/src/profile_log_sink.rs": "sha256:3b86d5e833fda86b929592d1a80a4197d859d3a937562ce3d96f621326c4f5ce",
-    "rust/gen/src/span_log_sink.rs": "sha256:83ae7bf011f2a1c1f21f79861c1caf24e53ad2d196cacf5eb2d83408f6fdaddd"
+    "rust/gen/src/profile_log_sink.rs": "sha256:784740155b01969f5e4b6bd40aec5a4f2a73ee014c1a6ee36b54915959947c34",
+    "rust/gen/src/span_log_sink.rs": "sha256:3bbf51f636aabcaa094d52ce8558e6872970ff106755b1699603f14bb9f8cd6e"
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-23T15:40:29.655101+00:00",
+    "generated_at": "2026-09-23T16:01:07.760658+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.0"
   },
