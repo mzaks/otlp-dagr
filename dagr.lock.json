@@ -930,11 +930,20 @@
     "go/gen/otlp_traces_arena.go": "sha256:3f84e5e9642c0e392bafb11531d1f5e369ebb4a3ae4e5840889a82400cb5807d",
     "go/gen/otlp_traces_serde.go": "sha256:a19da9f5e277c4b9024e2bfc8ee6e25e0733bb8964f30a28ab4844ab9959da9a",
     "go/gen/otlptracesdirect/otlp_traces.go": "sha256:0cdb1b098b69d85d2af804e06d0e92a3c4981a5ce1a60b7b0234a4c7542b7c34",
-    "go/gen/spanlog/span_log.go": "sha256:b0cfdf9bc9fed231cf90574bb3837f7b8963f406c7e36c40ace73bb8820d6df5"
+    "go/gen/spanlog/span_log.go": "sha256:b0cfdf9bc9fed231cf90574bb3837f7b8963f406c7e36c40ace73bb8820d6df5",
+    "rust/gen/Cargo.toml": "sha256:c01c54ed4c18b431815af8668b155f35e7d41084aa7f97aff7ce01dfbcb7f9b3",
+    "rust/gen/build.rs": "sha256:ef0170542199cbb707b78fb06eac8978eceb6bf64e710aabd54943134da4a62c",
+    "rust/gen/src/dagr_runtime.rs": "sha256:28be82c1b570b7bdc3c9db9b7c90a18bc8e98c55cb7edd161e580dd39f57bab1",
+    "rust/gen/src/lib.rs": "sha256:967041a32e3d17cb29960b91e583fa7a37a36c6b77e0d0f8e4e9f8dea347f268",
+    "rust/gen/src/otlp_traces.rs": "sha256:7fa4dda56129fe6801d8d070f520ce0ddcad2599a66e8d0406abdce46f5a4f58",
+    "rust/gen/src/otlp_traces_arrow.rs": "sha256:eb9b911df113344a31aee2abe03aea209933e66c7098971446abff9fed6cbc64",
+    "rust/gen/src/otlp_traces_core.rs": "sha256:0402418497eaade3cda39848705289c81924de322d48fac0af3c82eddba30c5a",
+    "rust/gen/src/otlp_traces_lazy.rs": "sha256:3257b581553c1249b942df6ad65f53def2809d1a8c756bdeb8aef6d3910d9ae9",
+    "rust/gen/src/span_log_sink.rs": "sha256:4a967fec6daa82c09b073f6208b97e392f6a12587468b630771e02adafd6f80d"
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-23T05:57:08.899548+00:00",
+    "generated_at": "2026-09-23T09:03:31.732376+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.0"
   },
@@ -947,6 +956,17 @@
       "layout": null,
       "out": "go/gen",
       "package": "otlptraces"
+    },
+    {
+      "exclude": [],
+      "features": [
+        "arrow",
+        "lazy"
+      ],
+      "lang": "rust",
+      "layout": "crate",
+      "out": "rust/gen",
+      "package": null
     }
   ]
 }

@@ -47,7 +47,7 @@ from dagr.dsl import (
     int_val, float_val, bool_val, string_val, b64_val, array_val,
     union_ref_val, ref_val, nil,
 )
-from dagr.config import Library, Go  # Rust, Swift, TypeScript, Mojo, Odin, Python
+from dagr.config import Library, Go, Rust  # Swift, TypeScript, Mojo, Odin, Python
 
 
 # ENUMS are written as {code: name}, not as a list. The list form auto-indexes from 0,
@@ -225,7 +225,12 @@ library = Library(
         # The Go emitter always writes the lazy accessors, the arena, the serializer
         # and the direct builder (spec/37 §16) — there is no feature list to opt into.
         Go(out="go/gen", package="otlptraces"),
-        # Rust(out="rust/gen", features=["lazy", "direct"]),  # §9 Arrow / OTAP bridge
+        # The Rust crate carries the lazy reader and spec/19's lazy Arrow producer
+        # (`arrow` implies `lazy`): one normalised table per node type, and `AnyValue` —
+        # a recursive union Arrow cannot inline — as its own table keyed by a surrogate
+        # id. That is the input to the OTAP bridge (spec/38 §9, §14 step 8); it is not
+        # the OTAP record-batch schema yet.
+        Rust(out="rust/gen", features=["arrow"]),
     ],
     wire_format_version=1,
 )

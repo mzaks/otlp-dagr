@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate the Go target from schema.py and refresh the receipt.
+# Regenerate the Go and Rust targets from schema.py and refresh the receipt.
 #
 #   ./regen.sh            # regenerate
 #   ./regen.sh check      # diff schema.py against the committed receipt, generate nothing
@@ -21,4 +21,6 @@ if [ "$cmd" = "build" ]; then
   ( cd go && gofmt -l . | grep -v '^gen/' || true )
   ( cd go && go build ./... && go vet ./... )
   echo "regen: go build + vet clean"
+  ( cd rust/gen && cargo build --release --quiet )
+  echo "regen: rust (lazy + arrow) build clean"
 fi
