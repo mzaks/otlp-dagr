@@ -469,6 +469,44 @@ was wrong. The [links](#one-thing-the-benchmark-could-not-have-caught) case was 
 that did not cover a feature; this one was a corpus that did not contain what it said it
 did.
 
+## Nested attribute values
+
+The third gap of the same family, and the one the schema had to move to close.
+
+`AnyValue` can hold a slice or a map, and the bridge did neither: `attrValue` returned
+"unsupported" for `ValueTypeSlice` and `ValueTypeMap`, and `keyValues` dropped the
+attribute. Real OTLP traffic carries both — `http.request.header.*` is a slice on every
+HTTP span — so the encoder was silently discarding data.
+
+Three things had to be true for it to work:
+
+**The wrappers had to go.** `ArrayValue` and `KeyValueList` exist in the proto only
+because "`oneof` in AnyValue does not allow repeated fields". Collapsing them lets a
+nested value map onto `array_value` / `kvlist_value` directly. That is a Dagr generator
+fix away: Go emitted a one-return getter for a variant whose array view returns
+`(element, present)`, an arity mismatch only a union variant holding an array *of a
+union* ever reaches — and the spec corpus has `union_arr_node`, `_enum` and `_prim`, but
+no array-of-union.
+
+**`array_value` had to become `array_with_optionals`.** `repeated AnyValue` may contain
+an element with no `oneof` set; pdata calls it `ValueTypeEmpty`. A plain Dagr array has
+no way to say "absent", and it does not drop the element — it coerces it to the union's
+zero variant, so `["a", , "c"]` came back as `["a", "", "c"]`, the right length and the
+wrong types. The nil bitset costs `(count+7)/8` bytes per array and is the only faithful
+encoding. `TestNestedEdgeShapes` pins it, along with empty slices, empty maps, and a
+present key whose value is absent.
+
+**Nested values allocate, and the flat path must not.** Each level hands the builder a
+slice it keeps a pointer into, so that storage cannot be scratch the next attribute
+overwrites. `StreamBuilder` therefore stays allocation-free for scalar-only batches —
+which is nearly all traffic and all of the benchmark — and allocates in proportion to
+nesting when nesting is present. `TestFlatEncodeStillAllocatesNothing` guards the first
+half of that sentence.
+
+The decoder is recursive over a structure a writer chooses, so `MaxValueDepth` (32)
+bounds it; past the limit a value is left empty rather than truncated into something
+that reads like data. Protobuf's own decoder takes the same precaution.
+
 ## What this says about the next step
 
 | | verdict |

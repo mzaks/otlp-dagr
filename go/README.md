@@ -7,7 +7,9 @@
   Dagr repo's `benchmarks/proto_vs_dagr` (same LCG, same draw order).
 - `internal/fixture/` — that seed materialised as `ptrace.Traces`.
 - `pdatabridge/` — `pdata.Traces` ⇄ Dagr bytes. Encode via the direct builder; decode
-  exists for compatibility and is the slow path by construction.
+  exists for compatibility and is the slow path by construction. Attribute values recurse
+  through Slice and Map (`array_value` / `kvlist_value`); the decoder bounds its own
+  recursion at `MaxValueDepth`.
 - `bench/` — the measurements in the top-level README.
 - `spool/` — the spool file behind both components: create or resume, append, read
   forward or newest-first, and decide whether the tail is intact. Nothing here parses a
