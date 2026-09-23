@@ -269,17 +269,21 @@ An OTLP batch leaves the exporter as one record in a **doubly-linked `DataSink`*
 byte length written backwards at its end. That trailing span is the whole design:
 
 ```
-[framing] ( [typeId] [content_size] [received_unix_nano | span_count | batch] [span] )*
-                                                                        ^^^^^     ^^^^
-                                                            raw embedded graph    RLEB
+[framing] ( [typeId] [content_size] [received_unix_nano | span_count | resource_spans] [span] )*
+                                                                        ^^^^^^^^^^^^^^     ^^^^
+                                                        the graph's own packed nodes      RLEB
 ```
 
-- **The batch is stored verbatim.** `traces` is a `raw` embedded graph (`spec/18 §11`),
-  so the exporter's job really is "frame and append": the bytes the direct builder
-  produced go to disk untouched, and the receiver gets them back as a sub-slice of the
-  file. `TestExporterWritesTheBuilderOutputVerbatim` gates that byte for byte. The leaf
-  is a genuine standalone Dagr buffer — it reads through `OtlpTraces`' own accessors and
-  through `dagr graph-explorer`.
+- **The batch is stored inline, as the graph's own bytes.** The record holds the batch's
+  `resource_spans` array directly — no `TracesData` wrapper, no `raw` embedding. Those
+  nodes are packed, and a packed node is already relocatable, size-prefixed bytes; `raw`
+  is for a node that is not. The sink writes and reads them with `OtlpTraces`' own
+  generated code (Dagr `spec/11` §12), so every node in a record is byte-for-byte the
+  node the direct builder writes into a graph buffer (`TestRecordNodesAreTheGraphsBytes`,
+  all four signals), and a reader opens a record in place with the same `otlptraces`
+  accessors a graph buffer uses. The exporter encodes the record in one pass
+  (`StreamBuilder.AppendRecord`); `TestExporterWritesTheBuilderOutputVerbatim` gates that
+  what reaches the disk is exactly that record.
 - **The envelope answers questions without opening the batch.** `received_unix_nano` and
   `span_count` are two packed scalars per record, so "the last 500 spans before the
   error" walks backwards reading 24 bytes a record and never decodes a span.
@@ -318,15 +322,16 @@ phase B   dagrfile receiver ──▶ file exporter ──▶ out.json  ──�
 
 ```
 sent 4 batches of 500 spans to http://127.0.0.1:4318/v1/traces
-spool …/spans.dagr: 911213 bytes, 4 batches, 2000 spans, intact tail at 911213 bytes (reverse walk)
-  newest batch: 500 spans, received 2026-09-22T17:40:17+02:00, 227780 embedded bytes
+traces spool …/spans.dagr: 911213 bytes, 4 batches, 2000 items, intact tail at 911213 bytes (reverse walk)
+  newest batch: 500 items, received 2026-09-23T16:32:42.997729+02:00, 227799 record bytes
 verified 2000 spans through the collector round trip
 otlpdagrctl: spool tail is torn: torn tail: dropped 97630 bytes after 683410 (forward rescan)
 ```
 
-The `227780 embedded bytes` is the same number the benchmark reports for the batch, which
-is the point: the spool stores the encoder's output and adds 24 bytes of envelope and
-framing around it.
+A record is the batch's nodes plus 20 bytes: the envelope scalars and the array's own
+tag, size and count. For the benchmark's 500-span batch the nodes are 227,771 B — the
+same nodes the 227,780 B graph buffer holds behind its 9 B of framing and root — so the
+record is 227,791 B, 9 B smaller than the `raw` embedded form it replaced.
 
 ### Cost
 
@@ -335,11 +340,13 @@ at `/dev/null` (median of three):
 
 | | ns/op | allocs/op |
 |---|---|---|
-| encode (direct builder into a retained buffer) | 115,208 | **0** |
-| encode + append one sink record | 124,899 | **0** |
+| encode (one pass, straight into the record, retained buffer) | 109,224 | **0** |
+| encode + append one sink record | 114,389 | **0** |
 
-Framing and appending a batch costs **8%** on top of encoding it, and the steady state
+Framing and appending a batch costs **5%** on top of encoding it, and the steady state
 allocates nothing — the builder and its destination are held by the exporter and reused.
+(Measured 2026-09-23 after the batch moved inline; the `raw`-embedded form measured
+115,208 / 124,899.)
 
 That second row did not start out at zero. The generated Go sink writer built each
 record in a fresh `dagr.Builder` and copied it out with `MakeData()`, which on a
