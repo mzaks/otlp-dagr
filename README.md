@@ -1,9 +1,12 @@
 # otlp-dagr
 
-OTLP traces as a [Dagr](https://codeberg.org/mzaks/dagr) data graph, and the
-measurements that say whether that is worth doing.
+Every OTLP signal — traces, metrics, logs and profiles — as a
+[Dagr](https://codeberg.org/mzaks/dagr) data graph, and the measurements that say whether
+that is worth doing.
 
-This implements steps 1–3, 6 and 7 of `spec/38-otlp-on-dagr.md` in the Dagr repo: the
+This implements steps 1–3, 6 and 7 of `spec/38-otlp-on-dagr.md` in the Dagr repo, and
+decision D6 (every signal, over one shared `OtlpCommon` — see [Every signal](#every-signal-d6)).
+Most of the numbers below are traces, the signal it started with: the
 schema, a `pdata` bridge, the benchmark that decides the rest — **Dagr's Go lazy
 accessors against `ptrace.Unmarshal` + pdata accessors, in nanoseconds and in
 allocations** — a **collector exporter/receiver pair** that writes and reads an
@@ -146,14 +149,20 @@ receiver on an untrusted hop would pay, and it matters for the transport case in
 ### Materialising is the slow path, as predicted
 
 ```
-Materialise_DagrToPdata    934923      547482        13621
-Open_Proto (unmarshal)     323537      691770        15124
+Materialise_DagrToPdata    488219      674210        14268
+Open_Proto (unmarshal)     313386      691771        15124
 ```
 
-2.9× slower than a protobuf unmarshal. `spec/38 §0.1` predicted ~1.6× from the Rust
-numbers; Go is worse. Either way the conclusion is unchanged and now measured in Go:
-**a receiver that converts a Dagr batch into pdata is worse off than one that stayed on
-protobuf.** The win exists only for a consumer that keeps the buffer.
+1.56× slower than a protobuf unmarshal. **This used to read 2.9×, and that was the
+decoder, not the format:** it looped `{F}At(i)` over every array — spans, attributes,
+events, links — and a packed array's `At(i)` walks from the start, so the decode was
+O(n²) (the same trap as [the sweep](#the-sweep-why-ati-is-on²-and-what-the-iterator-fixed)).
+Walked with the cursors it matches the Rust ratio `spec/38 §0.1` gives, and a CPU
+profile puts Dagr's own reads at a few percent: what remains is building a pdata tree
+through pdata's setters and the GC it costs. The conclusion stands — **a receiver that
+converts a Dagr batch into pdata is worse off than one that stayed on protobuf** — but
+it is a cost of materialising pdata, not of reading Dagr. The win exists only for a
+consumer that keeps the buffer.
 
 ### Encode — the serializer is fixed; the bridge is now the cost
 
@@ -507,6 +516,56 @@ The decoder is recursive over a structure a writer chooses, so `MaxValueDepth` (
 bounds it; past the limit a value is left empty rather than truncated into something
 that reads like data. Protobuf's own decoder takes the same precaution.
 
+## Every signal (D6)
+
+Metrics, logs and profiles (`v1development`) joined traces on 2026-09-23. `schema.py`
+declares `common.proto` + `resource.proto` once, as `OtlpCommon`, and each signal imports
+it; each signal has its own generated Go package (`otlpgen/otlp{traces,metrics,logs,profiles}`,
+`layout="package-per-graph"`), its own pdata bridge (`pdatabridge`, `metricbridge`,
+`logbridge`, `profilebridge`), its own spool (`spool.Traces` … `spool.Profiles`), and the
+one `dagrfile` exporter/receiver serves all four. `./ocb/roundtrip.sh` runs every signal
+through a real collector.
+
+Realistic batches (metrics 600 data points; logs 500 records; profiles 2,000 samples over
+a 400-function dictionary), `go test ./bench -run TestSignalSizes -v` and
+`-bench BenchmarkSignal`:
+
+```
+                 size    size.gz |  encode (serializer only)       |  to pdata        |  lazy sweep
+metrics   proto 122,327   14,107 |  39.8us                         |  188us           |  191us (unmarshal+walk)
+          dagr   92,626   13,046 |  122us (68.2us, 0 allocs)  3.1x |  358us     1.90x |  41.5us, 0 allocs   4.6x faster
+logs      proto 119,923   23,697 |  32.1us                         |  149us           |  150us
+          dagr  115,683   23,773 |  81.1us (37.1us, 0 allocs) 2.5x |  221us     1.48x |  27.8us, 0 allocs   5.4x faster
+profiles  proto  93,407   28,997 |  52.8us                         |  229us           |  231us
+          dagr   98,309   29,447 |  187us (92.2us, 0 allocs)  3.5x |  640us     2.80x |  112us, 0 allocs    2.1x faster
+```
+
+- **Size holds** — parity gzipped everywhere, and metrics is the best case in the whole
+  benchmark (0.76× raw): a histogram's `bucket_counts` / `explicit_bounds` cost Dagr no
+  per-array tag and length on every data point.
+- **Lazy reads hold** — 2.1–5.4× with zero allocations.
+- **Encode does not, yet.** These signals use the plain value-tree bridge, and half their
+  encode time is building that tree; traces reached 1.50× only after a one-pass
+  streaming bridge. Their serializer alone is 1.16–1.75× protobuf.
+
+**Profiles is faithful to the proto**: every cross-reference stays an integer index into
+a `ProfilesDictionary` table, so the bridge is a straight copy. That is protobuf's
+workaround for having no references — a graph-native variant (node refs, no string table)
+is the obvious next thing to measure (`spec/38` §2.6). Beware `pprofile.ProtoMarshaler`:
+it mutates the batch it marshals (attribute keys move into the string table), so compare
+from fresh copies.
+
+**Coverage is a gate.** Each signal has a WIDE fixture (`internal/fixture/wide.go`) and
+`internal/coverage` proves it reaches every field and union variant by walking the value
+tree — the fourth corpus bug in four steps was every traces encoder dropping the scope's
+attributes and the resource's dropped count, which the seed never sets. Exempt are the
+three fields pdata v1.67 cannot express: `Resource.entity_refs`, `KeyValue.key_strindex`,
+`AnyValue.string_value_strindex`.
+
+**One open hazard:** the four spools share one framing word and no header, so a spool
+does not record which signal it holds — point each pipeline at its own path. A header
+carrying the signal is part of `spec/38` D2.
+
 ## What this says about the next step
 
 | | verdict |
@@ -548,8 +607,9 @@ in RAM.
 So the shape the whole plan has been arguing toward is now assembled end to end: Dagr at
 the collector's edges (step 6), and the reads that justify it in a service that owns the
 buffer (step 7). What is left is §14 step 8 — the Arrow bridge and/or Go path query —
-and the open decisions in §12, of which D6 (bring metrics in to validate the
-ImportedGraph split) is the one that would most change the schema.
+over all four signals now that D6 is done, and the open decisions in §12, of which D2
+(the header, and with it the spools' signal identity) is the one that would change
+bytes first.
 
 ## Licence
 
