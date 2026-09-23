@@ -1,0 +1,13 @@
+[package]
+name = "otap_rust_check"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Second OTAP oracle: otel-arrow's Rust decoder (df-engine), the strict schema check"
+
+[dependencies]
+otel-arrow-dfe-pdata = "0.57.0"
+prost = "0.14"
+
+[profile.release]
+debug = 1

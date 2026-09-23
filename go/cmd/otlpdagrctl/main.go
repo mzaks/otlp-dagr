@@ -4,6 +4,7 @@
 //	otlpdagrctl send   -endpoint URL -spans N      send one batch over OTLP/HTTP
 //	otlpdagrctl spool  -path FILE [-spans N]       report and CHECK a spool
 //	otlpdagrctl verify -path FILE -spans N         compare a file-exporter dump to the sent batch
+//	otlpdagrctl fixtures -out DIR                  write the OTAP gate's inputs (.dagr + .pb)
 //
 // `-signal metrics|logs|profiles` switches send / spool / verify to that signal; send
 // then posts the signal's WIDE fixture (every field set) to its OTLP/HTTP path, and
@@ -38,7 +39,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(errors.New("usage: otlpdagrctl send|spool|verify [flags]"))
+		fail(errors.New("usage: otlpdagrctl send|spool|verify|fixtures [flags]"))
 	}
 	var err error
 	switch os.Args[1] {
@@ -48,6 +49,8 @@ func main() {
 		err = checkSpool(os.Args[2:])
 	case "verify":
 		err = verify(os.Args[2:])
+	case "fixtures":
+		err = fixtures(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}

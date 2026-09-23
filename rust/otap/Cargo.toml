@@ -1,0 +1,14 @@
+[package]
+name = "otlp_dagr_otap"
+version = "0.1.0"
+edition = "2024"
+description = "Dagr -> OTAP (OpenTelemetry Arrow Protocol): OTLP read in place from Dagr bytes, written as OTAP record batches"
+
+[dependencies]
+# The generated lazy readers (`dagr build`, rust/gen). Only the lazy accessors are used:
+# the bridge never restores a value tree and never decodes protobuf.
+otlp_dagr = { path = "../gen" }
+arrow = { version = "53", default-features = false, features = ["ipc"] }
+
+[profile.release]
+debug = 1
