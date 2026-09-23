@@ -14,20 +14,21 @@
 
 use std::sync::Arc;
 
-use arrow::array::{StringBuilder, UInt16Array, UInt32Builder};
+use arrow::array::{UInt16Array, UInt32Builder};
 
 use crate::attrs::Attrs;
 use crate::cols::{Cols, delta};
+use crate::dict::{self, Keys};
 
 pub struct Envelope {
     res_id: Vec<u16>,
-    res_url: StringBuilder,
+    res_url: dict::Str,
     res_dropped: UInt32Builder,
     scope_id: Vec<u16>,
-    scope_name: StringBuilder,
-    scope_version: StringBuilder,
+    scope_name: dict::Str,
+    scope_version: dict::Str,
     scope_dropped: UInt32Builder,
-    url: StringBuilder,
+    url: dict::Str,
     pub resource_attrs: Attrs,
     pub scope_attrs: Attrs,
     resources: u32,
@@ -48,13 +49,13 @@ impl Default for Envelope {
     fn default() -> Self {
         Envelope {
             res_id: Vec::new(),
-            res_url: StringBuilder::new(),
+            res_url: dict::Str::new(Keys::U8),
             res_dropped: UInt32Builder::new(),
             scope_id: Vec::new(),
-            scope_name: StringBuilder::new(),
-            scope_version: StringBuilder::new(),
+            scope_name: dict::Str::new(Keys::U8),
+            scope_version: dict::Str::new(Keys::U8),
             scope_dropped: UInt32Builder::new(),
-            url: StringBuilder::new(),
+            url: dict::Str::new(Keys::U8),
             resource_attrs: Attrs::new(false),
             scope_attrs: Attrs::new(false),
             resources: 0,
@@ -93,7 +94,7 @@ impl Envelope {
         let mut res = Cols::default();
         delta(&mut self.res_id);
         res.req("id", Arc::new(UInt16Array::from(std::mem::take(&mut self.res_id))));
-        res.opt("schema_url", Arc::new(self.res_url.finish()));
+        res.opt("schema_url", self.res_url.finish());
         res.opt("dropped_attributes_count", Arc::new(self.res_dropped.finish()));
         if let Some(a) = res.into_struct(vec![true; n]) {
             c.opt("resource", a);
@@ -101,13 +102,13 @@ impl Envelope {
         let mut sc = Cols::default();
         delta(&mut self.scope_id);
         sc.req("id", Arc::new(UInt16Array::from(std::mem::take(&mut self.scope_id))));
-        sc.opt("name", Arc::new(self.scope_name.finish()));
-        sc.opt("version", Arc::new(self.scope_version.finish()));
+        sc.opt("name", self.scope_name.finish());
+        sc.opt("version", self.scope_version.finish());
         sc.opt("dropped_attributes_count", Arc::new(self.scope_dropped.finish()));
         if let Some(a) = sc.into_struct(vec![true; n]) {
             c.opt("scope", a);
         }
-        c.opt("schema_url", Arc::new(self.url.finish()));
+        c.opt("schema_url", self.url.finish());
         self.resources = 0;
         self.scopes = 0;
     }

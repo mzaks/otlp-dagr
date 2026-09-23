@@ -12,6 +12,7 @@ pub mod attrs;
 pub mod bar;
 pub mod cbor;
 pub mod cols;
+pub mod dict;
 pub mod envelope;
 pub mod logs;
 pub mod metrics;
@@ -77,11 +78,12 @@ pub(crate) fn fixed<'a, const N: usize>(v: Option<&'a [u8]>, what: &'static str)
     }
 }
 
-/// Converts Dagr batches into `BatchArrowRecords`. Holds the schema-id counter (ids must be
-/// unique across payload types for the whole gRPC stream) and warm column builders.
+/// Converts Dagr batches into `BatchArrowRecords`, one after another on ONE OTAP stream (one
+/// receiver connection): it holds the IPC streams (schemas sent once, see `bar::Streams`),
+/// the column dictionaries (values sent once, see `dict`) and warm column builders.
 #[derive(Default)]
 pub struct Producer {
-    schema_ids: u64,
+    streams: bar::Streams,
     batches: i64,
     traces: traces::Traces,
     logs: logs::Logs,
@@ -92,7 +94,7 @@ impl Producer {
     /// One OtlpTraces buffer → one serialized `BatchArrowRecords`.
     pub fn traces(&mut self, dagr: &[u8]) -> Result<Vec<u8>, Error> {
         self.batches += 1;
-        let mut bar = Bar::new(&mut self.schema_ids, self.batches);
+        let mut bar = Bar::new(&mut self.streams, self.batches);
         self.traces.convert(dagr, &mut bar)?;
         Ok(bar.finish())
     }
@@ -100,9 +102,23 @@ impl Producer {
     /// One OtlpLogs buffer → one serialized `BatchArrowRecords`.
     pub fn logs(&mut self, dagr: &[u8]) -> Result<Vec<u8>, Error> {
         self.batches += 1;
-        let mut bar = Bar::new(&mut self.schema_ids, self.batches);
+        let mut bar = Bar::new(&mut self.streams, self.batches);
         self.logs.convert(dagr, &mut bar)?;
         Ok(bar.finish())
+    }
+
+    /// zstd-compress every IPC body (otel-arrow's producer does by default; both consumers
+    /// read it).
+    pub fn with_zstd(mut self, on: bool) -> Self {
+        self.streams = bar::Streams::new(on);
+        self
+    }
+
+    /// Starts every payload type's stream over (schemas and dictionaries re-sent) — for a
+    /// new receiver connection. Column dictionaries are kept; the next batch re-sends them.
+    pub fn reset_streams(&mut self) {
+        let zstd = std::mem::take(&mut self.streams);
+        self.streams = bar::Streams::new(zstd.is_zstd());
     }
 
     /// Emit metric `metadata` as METRIC_ATTRS — for a Rust (df-engine) receiver only; see
@@ -116,7 +132,7 @@ impl Producer {
     /// is dropped unless `with_metric_metadata` (the Go consumer rejects METRIC_ATTRS).
     pub fn metrics(&mut self, dagr: &[u8]) -> Result<Vec<u8>, Error> {
         self.batches += 1;
-        let mut bar = Bar::new(&mut self.schema_ids, self.batches);
+        let mut bar = Bar::new(&mut self.streams, self.batches);
         self.metrics.convert(dagr, &mut bar)?;
         Ok(bar.finish())
     }

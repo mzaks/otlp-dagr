@@ -7,15 +7,14 @@
 //! message ArrowPayload      { string schema_id = 1; ArrowPayloadType type = 2; bytes record = 3; }
 //! ```
 //!
-//! Each payload's `record` is an Arrow IPC *stream*: the schema message, then exactly one
-//! record batch. Both decoders (Go `arrow_record.Consumer`, Rust `otel-arrow-dfe-pdata`)
-//! key their IPC readers by `schema_id` ALONE, not by (type, schema_id), and treat an unseen
-//! id as a schema reset for that payload type — so every payload here gets a fresh id from
-//! one counter and carries its own schema. That costs the schema bytes per payload and buys
-//! a producer with no cross-batch state to get wrong.
+//! Each payload's `record` continues an Arrow IPC *stream* (`Streams`): a new stream's first
+//! payload carries the schema message, every payload its changed dictionaries and exactly
+//! one record batch.
 
 use arrow::error::ArrowError;
-use arrow::ipc::writer::StreamWriter;
+use arrow::ipc::CompressionType;
+use arrow::ipc::writer::{IpcWriteOptions, StreamWriter};
+use arrow::datatypes::SchemaRef;
 use arrow::record_batch::RecordBatch;
 
 /// `ArrowPayloadType` values used by traces, logs and metrics.
@@ -50,40 +49,87 @@ pub enum PayloadType {
     SpanLinkAttrs = 45,
 }
 
-/// Builds one `BatchArrowRecords`. Payloads with no rows are dropped (otap-spec §3.1: an
-/// empty payload SHOULD be omitted and equals an absent one).
+/// The producer's IPC streams, one per payload type, kept from batch to batch as OTAP
+/// intends: a payload whose schema matches its type's previous one continues that stream
+/// under the same `schema_id` — no schema message, and no dictionary the receiver already
+/// holds (see `dict.rs`) — and a changed schema starts a new stream under a fresh id, which
+/// both consumers treat as a reset for that payload type. `schema_id`s come from one
+/// counter: both consumers key their readers by `schema_id` ALONE, not by (type, id).
+///
+/// A stream is scoped to one receiver connection (one gRPC stream): a receiver that
+/// joins mid-stream cannot decode it. `Producer::reset_streams` starts over.
+#[derive(Default)]
+pub struct Streams {
+    next_id: u64,
+    zstd: bool,
+    by_type: Vec<Option<Stream>>, // indexed by ArrowPayloadType
+}
+
+struct Stream {
+    schema: SchemaRef,
+    id: String,
+    w: StreamWriter<Vec<u8>>,
+}
+
+impl Streams {
+    pub fn new(zstd: bool) -> Self {
+        Streams { zstd, ..Default::default() }
+    }
+
+    pub fn is_zstd(&self) -> bool {
+        self.zstd
+    }
+
+    /// The IPC messages for `batch` on its type's stream, and the stream's schema_id.
+    fn write(&mut self, ty: PayloadType, batch: &RecordBatch) -> Result<(Vec<u8>, String), ArrowError> {
+        let slot = ty as usize;
+        if self.by_type.len() <= slot {
+            self.by_type.resize_with(slot + 1, || None);
+        }
+        let same = matches!(&self.by_type[slot], Some(s) if s.schema == batch.schema());
+        if !same {
+            // Let the writer number the dictionaries: every Field here carries dict_id 0,
+            // and a schema with two dictionaries under one id is rejected ("conflicting
+            // dictionary types for id 0").
+            let mut opts = IpcWriteOptions::default().with_preserve_dict_id(false);
+            if self.zstd {
+                // IPC body compression; both consumers decompress it (Go reads WithZstd)
+                opts = opts.try_with_compression(Some(CompressionType::ZSTD))?;
+            }
+            let w = StreamWriter::try_new_with_options(Vec::new(), &batch.schema(), opts)?;
+            let id = self.next_id.to_string();
+            self.next_id += 1;
+            self.by_type[slot] = Some(Stream { schema: batch.schema(), id, w });
+        }
+        let s = self.by_type[slot].as_mut().unwrap();
+        s.w.write(batch)?;
+        // no end-of-stream marker: the stream continues with the next batch
+        Ok((std::mem::take(s.w.get_mut()), s.id.clone()))
+    }
+}
+
+/// Builds one `BatchArrowRecords` on the producer's streams. Payloads with no rows are
+/// dropped (otap-spec §3.1: an empty payload SHOULD be omitted and equals an absent one).
 pub struct Bar<'p> {
-    ids: &'p mut u64,
-    batch_id: i64,
+    streams: &'p mut Streams,
     out: Vec<u8>,
 }
 
 impl<'p> Bar<'p> {
-    pub fn new(ids: &'p mut u64, batch_id: i64) -> Self {
+    pub fn new(streams: &'p mut Streams, batch_id: i64) -> Self {
         let mut out = Vec::new();
         if batch_id != 0 {
             out.push(0x08);
             put_varint(&mut out, batch_id as u64);
         }
-        Bar { ids, batch_id, out }
-    }
-
-    pub fn batch_id(&self) -> i64 {
-        self.batch_id
+        Bar { streams, out }
     }
 
     pub fn payload(&mut self, ty: PayloadType, batch: RecordBatch) -> Result<(), ArrowError> {
         if batch.num_rows() == 0 {
             return Ok(());
         }
-        let mut w = StreamWriter::try_new(Vec::new(), &batch.schema())?;
-        w.write(&batch)?;
-        // finish() appends the end-of-stream marker; readers stop after the one batch they
-        // expect and never reach it.
-        let record = w.into_inner()?;
-        let schema_id = self.ids.to_string();
-        *self.ids += 1;
-
+        let (record, schema_id) = self.streams.write(ty, &batch)?;
         let mut msg = Vec::with_capacity(record.len() + 16);
         msg.push(0x0a);
         put_varint(&mut msg, schema_id.len() as u64);

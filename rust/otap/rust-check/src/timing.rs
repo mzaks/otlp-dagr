@@ -25,3 +25,6 @@ pub fn time<F: FnMut() -> usize>(mut f: F) -> (f64, usize) {
 /// The batches both halves time.
 pub const BATCHES: [(&str, &str); 5] =
     [("traces", "batch"), ("logs", "batch"), ("metrics", "batch"), ("traces", "wide"), ("metrics", "wide")];
+
+/// How many `<signal>-stream-NN` fixtures there are (otlpdagrctl fixtures).
+pub const STREAM: usize = 20;

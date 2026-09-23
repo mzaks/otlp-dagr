@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -126,46 +127,105 @@ func run[T any](t *testing.T, prefix string, s signal[T]) {
 	}
 }
 
-func TestTraces(t *testing.T) {
-	run(t, "traces", signal[ptrace.Traces]{
-		unmarshal: (&ptrace.ProtoUnmarshaler{}).UnmarshalTraces,
-		consume:   (*arrow_record.Consumer).TracesFrom,
-		count:     ptrace.Traces.SpanCount,
-		request:   func(td ptrace.Traces) json.Marshaler { return ptraceotlp.NewExportRequestFromTraces(td) },
-		marshal:   (&ptrace.ProtoMarshaler{}).MarshalTraces,
-	})
+// runStream decodes the `<prefix>-stream-NN.sbar` batches — written by ONE producer, so
+// later ones reuse earlier schemas and dictionaries — with ONE consumer, in order, and
+// checks each against its fixture.
+func runStream[T any](t *testing.T, prefix string, s signal[T]) {
+	dir := work(t)
+	sbars, _ := filepath.Glob(filepath.Join(dir, prefix+"-stream-*.sbar"))
+	if len(sbars) == 0 {
+		t.Skipf("no %s-stream-*.sbar in %s", prefix, dir)
+	}
+	sort.Strings(sbars)
+	c := arrow_record.NewConsumer()
+	defer c.Close()
+	for _, p := range sbars {
+		name := strings.TrimSuffix(filepath.Base(p), ".sbar")
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bar arrowpb.BatchArrowRecords
+		if err := proto.Unmarshal(raw, &bar); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		pb, err := os.ReadFile(filepath.Join(dir, name+".pb"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := s.unmarshal(pb)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.expected != nil {
+			want = s.expected(want)
+			if pb, err = s.marshal(want); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := s.consume(c, &bar)
+		if err != nil {
+			t.Fatalf("%s: the consumer rejected the stream's batch: %v", name, err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("%s: decoded %d batches, want 1", name, len(got))
+		}
+		gotPB, err := s.marshal(got[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(gotPB, pb) {
+			t.Errorf("%s: decoded batch differs from its fixture (%d proto bytes vs %d)", name, len(gotPB), len(pb))
+			assert.Equiv(assert.NewStdUnitTest(t), []json.Marshaler{s.request(want)}, []json.Marshaler{s.request(got[0])})
+			return
+		}
+	}
 }
 
-func TestLogs(t *testing.T) {
-	run(t, "logs", signal[plog.Logs]{
-		unmarshal: (&plog.ProtoUnmarshaler{}).UnmarshalLogs,
-		consume:   (*arrow_record.Consumer).LogsFrom,
-		count:     plog.Logs.LogRecordCount,
-		request:   func(ld plog.Logs) json.Marshaler { return plogotlp.NewExportRequestFromLogs(ld) },
-		marshal:   (&plog.ProtoMarshaler{}).MarshalLogs,
-	})
+func TestTracesStream(t *testing.T)  { runStream(t, "traces", tracesSignal) }
+func TestLogsStream(t *testing.T)    { runStream(t, "logs", logsSignal) }
+func TestMetricsStream(t *testing.T) { runStream(t, "metrics", metricsSignal) }
+
+var tracesSignal = signal[ptrace.Traces]{
+	unmarshal: (&ptrace.ProtoUnmarshaler{}).UnmarshalTraces,
+	consume:   (*arrow_record.Consumer).TracesFrom,
+	count:     ptrace.Traces.SpanCount,
+	request:   func(td ptrace.Traces) json.Marshaler { return ptraceotlp.NewExportRequestFromTraces(td) },
+	marshal:   (&ptrace.ProtoMarshaler{}).MarshalTraces,
 }
 
-func TestMetrics(t *testing.T) {
-	run(t, "metrics", signal[pmetric.Metrics]{
-		unmarshal: (&pmetric.ProtoUnmarshaler{}).UnmarshalMetrics,
-		// metric metadata is not sent to a Go receiver (it has no METRIC_ATTRS case)
-		expected: func(md pmetric.Metrics) pmetric.Metrics {
-			rms := md.ResourceMetrics()
-			for i := 0; i < rms.Len(); i++ {
-				sms := rms.At(i).ScopeMetrics()
-				for j := 0; j < sms.Len(); j++ {
-					ms := sms.At(j).Metrics()
-					for k := 0; k < ms.Len(); k++ {
-						ms.At(k).Metadata().Clear()
-					}
+func TestTraces(t *testing.T) { run(t, "traces", tracesSignal) }
+
+var logsSignal = signal[plog.Logs]{
+	unmarshal: (&plog.ProtoUnmarshaler{}).UnmarshalLogs,
+	consume:   (*arrow_record.Consumer).LogsFrom,
+	count:     plog.Logs.LogRecordCount,
+	request:   func(ld plog.Logs) json.Marshaler { return plogotlp.NewExportRequestFromLogs(ld) },
+	marshal:   (&plog.ProtoMarshaler{}).MarshalLogs,
+}
+
+func TestLogs(t *testing.T) { run(t, "logs", logsSignal) }
+
+var metricsSignal = signal[pmetric.Metrics]{
+	unmarshal: (&pmetric.ProtoUnmarshaler{}).UnmarshalMetrics,
+	// metric metadata is not sent to a Go receiver (it has no METRIC_ATTRS case)
+	expected: func(md pmetric.Metrics) pmetric.Metrics {
+		rms := md.ResourceMetrics()
+		for i := 0; i < rms.Len(); i++ {
+			sms := rms.At(i).ScopeMetrics()
+			for j := 0; j < sms.Len(); j++ {
+				ms := sms.At(j).Metrics()
+				for k := 0; k < ms.Len(); k++ {
+					ms.At(k).Metadata().Clear()
 				}
 			}
-			return md
-		},
-		consume: (*arrow_record.Consumer).MetricsFrom,
-		count:   pmetric.Metrics.DataPointCount,
-		request: func(md pmetric.Metrics) json.Marshaler { return pmetricotlp.NewExportRequestFromMetrics(md) },
-		marshal: (&pmetric.ProtoMarshaler{}).MarshalMetrics,
-	})
+		}
+		return md
+	},
+	consume: (*arrow_record.Consumer).MetricsFrom,
+	count:   pmetric.Metrics.DataPointCount,
+	request: func(md pmetric.Metrics) json.Marshaler { return pmetricotlp.NewExportRequestFromMetrics(md) },
+	marshal: (&pmetric.ProtoMarshaler{}).MarshalMetrics,
 }
+
+func TestMetrics(t *testing.T) { run(t, "metrics", metricsSignal) }

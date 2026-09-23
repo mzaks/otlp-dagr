@@ -623,19 +623,23 @@ The gate is otel-arrow's own code: the Go consumer the collector's `otelarrowrec
 must give back each fixture (otel-arrow's `assert.Equiv`, plus exact protobuf bytes where no
 kvlist is nested in a value), and the Rust decoder — the strict schema check — must too.
 
+On a stream — 20 consecutive batches of 500, sharing vocabulary but not ids or values, one
+producer each, as an exporter sends them:
+
 ```
-batch            dagr µs  otel-arrow µs  speedup    dagr B  otel-arrow B
-traces-batch       407.7          505.2    1.24x    313269         79166
-logs-batch         209.3          217.7    1.04x    178825         34086
-metrics-batch      259.3          353.8    1.36x    165839         84743
+stream     dagr µs/batch  otel-arrow  speedup   bytes dagr / o-a      zstd dagr / o-a
+traces          451.3        515.4     1.14x   1,488,452 1,709,058    571,036  634,714
+logs            255.2        224.5     0.88x   1,651,568 1,610,338    533,680  556,962
+metrics         272.8        339.5     1.24x   1,864,890 1,829,432    379,088  416,014
 ```
 
-Faster than otel-arrow's own path from OTLP bytes (which already skips prost, through its
-zero-copy protobuf views) — but 2–5× larger, because otel-arrow's producer dictionary-
-encodes, sorts and reuses schemas and this one does not yet. That is the next step.
-Profiles have no OTAP mapping (none upstream). Metric `metadata` is dropped by default:
-the Go consumer rejects the payload that carries it (`Producer::with_metric_metadata`
-keeps it, for Rust receivers). `spec/38` §9 has the contract, the three upstream findings
+Compressed, as OTAP is sent, the output is 4–10% smaller than otel-arrow's own producer,
+which reads OTLP through zero-copy protobuf views and already skips prost. The producer
+dictionary-encodes per column, keeps its IPC streams and dictionaries for the life of a
+connection (one `Producer` per receiver stream), and zstd-compresses on request
+(`with_zstd`). Profiles have no OTAP mapping (none upstream). Metric `metadata` is dropped
+by default: the Go consumer rejects the payload that carries it
+(`Producer::with_metric_metadata` keeps it, for Rust receivers). `spec/38` §9 has the contract, the three upstream findings
 the gate turned up, and the numbers.
 
 ## What this says about the next step

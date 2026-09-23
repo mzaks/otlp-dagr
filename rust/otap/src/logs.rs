@@ -7,13 +7,15 @@
 
 use std::sync::Arc;
 
-use arrow::array::{FixedSizeBinaryBuilder, Int32Builder, StringBuilder, TimestampNanosecondBuilder, UInt16Array, UInt32Builder};
+use arrow::array::{TimestampNanosecondBuilder, UInt16Array, UInt32Builder};
 
 use otlp_dagr::otlp_logs_lazy as lz;
 
 use crate::attrs::{Attrs, Val, ValueCols};
 use crate::bar::{Bar, PayloadType};
 use crate::cols::{Cols, delta};
+use crate::dict::{self, Keys};
+use arrow::datatypes::Int32Type;
 use crate::envelope::{Envelope, Row};
 use crate::traces::ts;
 use crate::{Error, fixed, id16};
@@ -27,11 +29,11 @@ pub struct Logs {
     ids: Vec<u16>,
     time: TimestampNanosecondBuilder,
     observed: TimestampNanosecondBuilder,
-    trace_id: FixedSizeBinaryBuilder,
-    span_id: FixedSizeBinaryBuilder,
-    severity_number: Int32Builder,
-    severity_text: StringBuilder,
-    event_name: StringBuilder,
+    trace_id: dict::Fsb,
+    span_id: dict::Fsb,
+    severity_number: dict::Prim<Int32Type>,
+    severity_text: dict::Str,
+    event_name: dict::Str,
     body: ValueCols,
     body_valid: Vec<bool>,
     dropped: UInt32Builder,
@@ -47,11 +49,11 @@ impl Default for Logs {
             ids: Vec::new(),
             time: ts(),
             observed: ts(),
-            trace_id: FixedSizeBinaryBuilder::new(16),
-            span_id: FixedSizeBinaryBuilder::new(8),
-            severity_number: Int32Builder::new(),
-            severity_text: StringBuilder::new(),
-            event_name: StringBuilder::new(),
+            trace_id: dict::Fsb::new(16, Keys::U8),
+            span_id: dict::Fsb::new(8, Keys::U8),
+            severity_number: dict::Prim::new(Keys::U8),
+            severity_text: dict::Str::new(Keys::U8),
+            event_name: dict::Str::new(Keys::U8),
             body: ValueCols::default(),
             body_valid: Vec::new(),
             dropped: UInt32Builder::new(),
@@ -111,11 +113,11 @@ impl Logs {
         self.time.append_option(lr.time_unix_nano().filter(|t| *t != 0).map(|t| t as i64));
         self.observed.append_option(lr.observed_time_unix_nano().filter(|t| *t != 0).map(|t| t as i64));
         match lr.trace_id().filter(|b| !b.is_empty()) {
-            Some(b) => self.trace_id.append_value(fixed::<16>(Some(b), "trace_id")?)?,
+            Some(b) => self.trace_id.append_value(fixed::<16>(Some(b), "trace_id")?),
             None => self.trace_id.append_null(),
         }
         match lr.span_id().filter(|b| !b.is_empty()) {
-            Some(b) => self.span_id.append_value(fixed::<8>(Some(b), "span_id")?)?,
+            Some(b) => self.span_id.append_value(fixed::<8>(Some(b), "span_id")?),
             None => self.span_id.append_null(),
         }
         self.severity_number.append_option(lr.severity_number().map(|s| s.raw_value() as i32).filter(|s| *s != 0));
@@ -146,11 +148,11 @@ impl Logs {
         self.env.finish(&mut c);
         c.opt("time_unix_nano", Arc::new(self.time.finish()));
         c.opt("observed_time_unix_nano", Arc::new(self.observed.finish()));
-        c.opt("trace_id", Arc::new(self.trace_id.finish()));
-        c.opt("span_id", Arc::new(self.span_id.finish()));
-        c.opt("severity_number", Arc::new(self.severity_number.finish()));
-        c.opt("severity_text", Arc::new(self.severity_text.finish()));
-        c.opt("event_name", Arc::new(self.event_name.finish()));
+        c.opt("trace_id", self.trace_id.finish());
+        c.opt("span_id", self.span_id.finish());
+        c.opt("severity_number", self.severity_number.finish());
+        c.opt("severity_text", self.severity_text.finish());
+        c.opt("event_name", self.event_name.finish());
         let mut body = Cols::default();
         self.body.finish(&mut body);
         if let Some(a) = body.into_struct(std::mem::take(&mut self.body_valid)) {

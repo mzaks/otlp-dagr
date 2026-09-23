@@ -101,15 +101,20 @@ fn main() {
         let mut names: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok()?.file_name().into_string().ok())
-            .filter(|n| n.starts_with(&format!("{signal}-")) && n.ends_with(".bar"))
+            .filter(|n| n.starts_with(&format!("{signal}-")) && (n.ends_with(".bar") || n.ends_with(".sbar")))
             .collect();
         names.sort();
+        // `.bar`: one batch, a fresh consumer. `.sbar`: one STREAM, written by one producer —
+        // decoded in name order by ONE consumer (later batches reuse schemas and dictionaries).
+        let mut stream = Consumer::default();
         for name in names {
-            let stem = name.trim_end_matches(".bar");
+            let is_stream = name.ends_with(".sbar");
+            let stem = name.trim_end_matches(".sbar").trim_end_matches(".bar");
             let bar = std::fs::read(dir.join(&name)).unwrap();
             let pb = std::fs::read(dir.join(format!("{stem}.pb"))).unwrap();
             let mut bar = BatchArrowRecords::decode(&bar[..]).expect("BatchArrowRecords");
-            let mut c = Consumer::default();
+            let mut fresh = Consumer::default();
+            let c = if is_stream { &mut stream } else { &mut fresh };
             let res = match signal.as_str() {
                 "traces" => c.consume_traces_batches(&mut bar).map(|mut got| {
                     let mut want = ExportTraceServiceRequest::decode(&pb[..]).expect("fixture pb");
@@ -143,16 +148,20 @@ fn main() {
                 other => panic!("unknown signal {other}"),
             };
             match res {
-                Ok(Ok(())) => println!("  rust decoder: {stem} ok"),
+                Ok(Ok(())) => {
+                    if !stem.contains("-stream-") || stem.ends_with("-00") {
+                        println!("  rust decoder: {name} ok{}", if is_stream { " (… and the rest of the stream)" } else { "" })
+                    }
+                }
                 Ok(Err(diff)) => {
                     failed += 1;
-                    let path = dir.join(format!("{stem}.rust-diff.txt"));
+                    let path = dir.join(format!("{name}.rust-diff.txt"));
                     std::fs::write(&path, diff).unwrap();
-                    println!("  rust decoder: {stem} DIFFERS (see {})", path.display());
+                    println!("  rust decoder: {name} DIFFERS (see {})", path.display());
                 }
                 Err(e) => {
                     failed += 1;
-                    println!("  rust decoder: {stem} REJECTED: {e}");
+                    println!("  rust decoder: {name} REJECTED: {e}");
                 }
             }
         }

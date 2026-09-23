@@ -5,6 +5,13 @@
 #   rust/otap/check.sh           # every signal the bridge supports
 set -euo pipefail
 cd "$(dirname "$0")"
+# every run covers both IPC body encodings: uncompressed, then zstd
+if [ -z "${DAGR2OTAP_ZSTD+x}" ]; then
+  DAGR2OTAP_ZSTD=0 "$0" "$@"
+  DAGR2OTAP_ZSTD=1 "$0" "$@"
+  exit 0
+fi
+export DAGR2OTAP_ZSTD
 ROOT="$(cd ../.. && pwd)"
 WORK="${WORK:-$PWD/work}"
 SIGNALS="${SIGNALS:-traces logs metrics}"
@@ -14,9 +21,13 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 cargo build --release --quiet --bin dagr2otap
 BIN="$PWD/target/release/dagr2otap"
 for sig in $SIGNALS; do
+  # the stream fixtures also go through ONE producer, in order (-> .sbar)
+  "$BIN" "$sig" "$WORK/$sig"-stream-*.dagr
+  echo "  $sig-stream: $(cat "$WORK/$sig"-stream-*.dagr | wc -c | tr -d ' ') B dagr -> $(cat "$WORK/$sig"-stream-*.sbar | wc -c | tr -d ' ') B OTAP over one stream"
   for f in "$WORK/$sig"-*.dagr; do
     "$BIN" "$sig" < "$f" > "${f%.dagr}.bar"
-    echo "  $(basename "${f%.dagr}"): $(wc -c < "$f" | tr -d ' ') B dagr -> $(wc -c < "${f%.dagr}.bar" | tr -d ' ') B OTAP"
+    case "$f" in *-stream-*) ;; *)
+    echo "  $(basename "${f%.dagr}"): $(wc -c < "$f" | tr -d ' ') B dagr -> $(wc -c < "${f%.dagr}.bar" | tr -d ' ') B OTAP" ;; esac
   done
 done
 # 1. the acceptance gate: otel-arrow's Go consumer, the collector receiver's own code
@@ -35,4 +46,4 @@ if [ "${RUST_ORACLE:-1}" != "0" ]; then
   RS="$SIGNALS"; [[ " $SIGNALS " == *" metrics "* ]] && RS="$RS metricsmeta"
   ( cd rust-check && cargo run --release --quiet --bin otap_rust_check -- "$WORK" $RS )
 fi
-echo "otap: green (${SIGNALS})"
+echo "otap: green (${SIGNALS}; zstd=${DAGR2OTAP_ZSTD})"

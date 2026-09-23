@@ -10,8 +10,7 @@
 use std::sync::Arc;
 
 use arrow::array::{
-    ArrayRef, BooleanBuilder, FixedSizeBinaryBuilder, Float64Builder, Int32Builder, Int64Builder, ListBuilder,
-    StringBuilder, StructArray, TimestampNanosecondBuilder, UInt16Array, UInt32Array, UInt32Builder, UInt64Builder,
+    ArrayRef, BooleanBuilder, Float64Builder, Int32Builder, Int64Builder, ListBuilder, StructArray, TimestampNanosecondBuilder, UInt16Array, UInt32Array, UInt32Builder, UInt64Builder,
     UInt8Builder,
 };
 use arrow::buffer::NullBuffer;
@@ -22,6 +21,8 @@ use otlp_dagr::otlp_metrics_lazy as lz;
 use crate::attrs::Attrs;
 use crate::bar::{Bar, PayloadType};
 use crate::cols::{Cols, delta};
+use crate::dict::{self, Keys};
+use arrow::datatypes::Int32Type;
 use crate::envelope::{Envelope, Row};
 use crate::traces::{delta_ids, ts};
 use crate::{Error, fixed, id16};
@@ -48,10 +49,10 @@ fn nz64(v: Option<u64>) -> Option<i64> {
 struct Exemplars {
     parent: Vec<u32>,
     time: TimestampNanosecondBuilder,
-    int: Int64Builder,
+    int: Int64Builder, // plain: the Rust decoder rejects a dictionary here
     double: Float64Builder,
-    span_id: FixedSizeBinaryBuilder,
-    trace_id: FixedSizeBinaryBuilder,
+    span_id: dict::Fsb,
+    trace_id: dict::Fsb,
     attrs: Attrs,
     // the Go consumer's decoder state (metrics/otlp/exemplar.go, ExemplarParentIdDecoder)
     prev_parent: u32,
@@ -71,8 +72,8 @@ impl Exemplars {
             time: ts(),
             int: Int64Builder::new(),
             double: Float64Builder::new(),
-            span_id: FixedSizeBinaryBuilder::new(8),
-            trace_id: FixedSizeBinaryBuilder::new(16),
+            span_id: dict::Fsb::new(8, Keys::U8),
+            trace_id: dict::Fsb::new(16, Keys::U8),
             attrs: Attrs::new(true),
             prev_parent: 0,
             prev: None,
@@ -105,11 +106,11 @@ impl Exemplars {
         self.int.append_option(if let Some(Num::Int(i)) = v { Some(i) } else { None });
         self.double.append_option(if let Some(Num::Double(d)) = v { Some(d) } else { None });
         match e.span_id().filter(|b| !b.is_empty()) {
-            Some(b) => self.span_id.append_value(fixed::<8>(Some(b), "exemplar span_id")?)?,
+            Some(b) => self.span_id.append_value(fixed::<8>(Some(b), "exemplar span_id")?),
             None => self.span_id.append_null(),
         }
         match e.trace_id().filter(|b| !b.is_empty()) {
-            Some(b) => self.trace_id.append_value(fixed::<16>(Some(b), "exemplar trace_id")?)?,
+            Some(b) => self.trace_id.append_value(fixed::<16>(Some(b), "exemplar trace_id")?),
             None => self.trace_id.append_null(),
         }
         kv::push_kvs(&mut self.attrs, id, e.filtered_attributes()?)?;
@@ -124,8 +125,8 @@ impl Exemplars {
         c.req("time_unix_nano", Arc::new(self.time.finish()));
         c.opt("int_value", Arc::new(self.int.finish()));
         c.opt("double_value", Arc::new(self.double.finish()));
-        c.opt("span_id", Arc::new(self.span_id.finish()));
-        c.opt("trace_id", Arc::new(self.trace_id.finish()));
+        c.opt("span_id", self.span_id.finish());
+        c.opt("trace_id", self.trace_id.finish());
         bar.payload(ty, c.batch()?)?;
         bar.payload(attrs_ty, self.attrs.finish()?)?;
         self.prev_parent = 0;
@@ -238,10 +239,10 @@ pub struct Metrics {
     // UNIVARIATE_METRICS
     ids: Vec<u16>,
     metric_type: UInt8Builder,
-    name: StringBuilder,
-    description: StringBuilder,
-    unit: StringBuilder,
-    temporality: Int32Builder,
+    name: dict::Str,
+    description: dict::Str,
+    unit: dict::Str,
+    temporality: dict::Prim<Int32Type>,
     monotonic: BooleanBuilder,
     metadata: Attrs,
     // NUMBER_DATA_POINTS
@@ -292,10 +293,10 @@ impl Default for Metrics {
             env: Envelope::default(),
             ids: Vec::new(),
             metric_type: UInt8Builder::new(),
-            name: StringBuilder::new(),
-            description: StringBuilder::new(),
-            unit: StringBuilder::new(),
-            temporality: Int32Builder::new(),
+            name: dict::Str::new(Keys::U8),
+            description: dict::Str::new(Keys::U8),
+            unit: dict::Str::new(Keys::U8),
+            temporality: dict::Prim::new(Keys::U8),
             monotonic: BooleanBuilder::new(),
             metadata: Attrs::new(false),
             num: Points::new(),
@@ -529,10 +530,10 @@ impl Metrics {
         c.req("id", Arc::new(UInt16Array::from(ids)));
         self.env.finish(&mut c);
         c.req("metric_type", Arc::new(self.metric_type.finish()));
-        c.req("name", Arc::new(self.name.finish()));
-        c.opt("description", Arc::new(self.description.finish()));
-        c.opt("unit", Arc::new(self.unit.finish()));
-        c.opt("aggregation_temporality", Arc::new(self.temporality.finish()));
+        c.req("name", self.name.finish());
+        c.opt("description", self.description.finish());
+        c.opt("unit", self.unit.finish());
+        c.opt("aggregation_temporality", self.temporality.finish());
         c.opt("is_monotonic", Arc::new(self.monotonic.finish()));
         bar.payload(PayloadType::UnivariateMetrics, c.batch()?)?;
         bar.payload(PayloadType::MetricAttrs, self.metadata.finish()?)?;

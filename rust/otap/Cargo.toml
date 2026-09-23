@@ -8,7 +8,7 @@ description = "Dagr -> OTAP (OpenTelemetry Arrow Protocol): OTLP read in place f
 # The generated lazy readers (`dagr build`, rust/gen). Only the lazy accessors are used:
 # the bridge never restores a value tree and never decodes protobuf.
 otlp_dagr = { path = "../gen" }
-arrow = { version = "53", default-features = false, features = ["ipc"] }
+arrow = { version = "53", default-features = false, features = ["ipc", "ipc_compression"] }
 
 [profile.release]
 debug = 1

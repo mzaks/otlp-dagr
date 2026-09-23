@@ -14,14 +14,13 @@
 
 use std::sync::Arc;
 
-use arrow::array::{
-    ArrayRef, BinaryBuilder, BooleanBuilder, Float64Builder, Int64Builder, StringBuilder, UInt16Array,
-    UInt32Array, UInt8Builder,
-};
+use arrow::array::{ArrayRef, BooleanBuilder, Float64Builder, UInt8Builder, UInt16Array, UInt32Array};
+use arrow::datatypes::Int64Type;
 use arrow::error::ArrowError;
 use arrow::record_batch::RecordBatch;
 
 use crate::cols::Cols;
+use crate::dict::{self, Keys};
 
 pub const EMPTY: u8 = 0;
 pub const STR: u8 = 1;
@@ -65,24 +64,25 @@ impl Val<'_> {
 /// attribute tables and the LOGS `body` struct.
 pub struct ValueCols {
     ty: UInt8Builder,
-    s: StringBuilder,
-    i: Int64Builder,
+    s: dict::Str,
+    i: dict::Prim<Int64Type>,
     d: Float64Builder,
     b: BooleanBuilder,
-    by: BinaryBuilder,
-    ser: BinaryBuilder,
+    by: dict::Bin,
+    ser: dict::Bin,
 }
 
 impl Default for ValueCols {
     fn default() -> Self {
         ValueCols {
             ty: UInt8Builder::new(),
-            s: StringBuilder::new(),
-            i: Int64Builder::new(),
+            // the Rust decoder allows only u16 keys on the value columns
+            s: dict::Str::new(Keys::U16),
+            i: dict::Prim::new(Keys::U16),
             d: Float64Builder::new(),
             b: BooleanBuilder::new(),
-            by: BinaryBuilder::new(),
-            ser: BinaryBuilder::new(),
+            by: dict::Bin::new(Keys::U16),
+            ser: dict::Bin::new(Keys::U16),
         }
     }
 }
@@ -104,19 +104,19 @@ impl ValueCols {
     /// `type` (required) and every value column that holds anything.
     pub fn finish(&mut self, c: &mut Cols) {
         c.req("type", Arc::new(self.ty.finish()));
-        c.opt("str", Arc::new(self.s.finish()));
-        c.opt("int", Arc::new(self.i.finish()));
+        c.opt("str", self.s.finish());
+        c.opt("int", self.i.finish());
         c.opt("double", Arc::new(self.d.finish()));
         c.opt("bool", Arc::new(self.b.finish()));
-        c.opt("bytes", Arc::new(self.by.finish()));
-        c.opt("ser", Arc::new(self.ser.finish()));
+        c.opt("bytes", self.by.finish());
+        c.opt("ser", self.ser.finish());
     }
 }
 
 pub struct Attrs {
     wide: bool, // u32 parent_id (event / link / data-point attrs) vs u16
     parent: Vec<u32>,
-    key: StringBuilder,
+    key: dict::Str,
     vals: ValueCols,
     // the previous row, for the quasi-delta decision (buffers reused, never reallocated
     // once warm)
@@ -137,7 +137,7 @@ impl Attrs {
         Attrs {
             wide,
             parent: Vec::new(),
-            key: StringBuilder::new(),
+            key: dict::Str::new(Keys::U8),
             vals: ValueCols::default(),
             has_prev: false,
             prev_parent: 0,
@@ -205,7 +205,7 @@ impl Attrs {
             Arc::new(UInt16Array::from(self.parent.drain(..).map(|p| p as u16).collect::<Vec<_>>()))
         };
         c.req("parent_id", parent);
-        c.req("key", Arc::new(self.key.finish()));
+        c.req("key", self.key.finish());
         self.vals.finish(&mut c);
         self.has_prev = false;
         c.batch()
