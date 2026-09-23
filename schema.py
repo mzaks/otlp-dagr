@@ -22,6 +22,20 @@ have been broken by each of those with no forward path for buffers already writt
 protobuf on every dimension the benchmark measures: parity gzipped, 29.1x on a lazy
 sweep, 1.91x on encode via the direct builder.
 
+RAW (`spec/39`) is on exactly three fields: the two `Span` nanosecond timestamps and
+`Event.time_unix_nano`. `raw` is a claim about MAGNITUDE, not about protobuf's `fixed64`
+— a packed writer normally probes `LebLength(v) < width` per value, and `raw` says the
+probe can never succeed, so skip it. For u64 that threshold is 2^49, about 6.5 days
+after the epoch, so a wall-clock nanosecond timestamp clears it by a factor of ~3,000
+and the probe is pure branch (`spec/32` §1.55, ~2% of serialize).
+
+Note what is deliberately NOT raw, because the tempting rule is wrong: `Span.flags` and
+`Link.flags` are `fixed32` in the proto too, but they hold small values — for u32 the
+threshold is 2^21, and a flags word of 0x101 encodes as a 2-byte LEB. Marking those raw
+would make every set flags field 2 bytes LARGER. Protobuf's `fixed32` is a statement
+about the wire encoding its author chose; Dagr's `raw` is a statement about the values.
+They coincide for timestamps and ids, and diverge for flags and small counters.
+
 A packed ROOT is also what makes the graph direct-buildable (`spec/33` §3), and packed
 propagates downward — so any node we later mark `frozen=True` (our own envelope /
 index / header types, never a transpiled OTLP message) is promoted to frozen+packed in
@@ -36,11 +50,24 @@ from dagr.dsl import (
 from dagr.config import Library, Go  # Rust, Swift, TypeScript, Mojo, Odin, Python
 
 
+# ENUMS are written as {code: name}, not as a list. The list form auto-indexes from 0,
+# which happens to match these protos today — and would stop matching the moment someone
+# inserted or reordered a case, silently, with no error and a changed wire value. OTLP's
+# enum numbers are fixed by the proto, so the schema states them.
+#
+# `capacity=255` on both is headroom, and it is free here: an enum's capacity only
+# reaches the wire through its raw width (<= 255 is one byte, either way) and through
+# sub-byte packing in enum ARRAYS, of which this graph has none. Capacity cannot be
+# changed compatibly later, so the choice is now or never — and OTLP has added span
+# kinds before. The same argument does NOT extend to the AnyValue union: a union's
+# capacity sets the bits per tag in union arrays (<= 16 -> 4 bits, <= 255 -> 8), so
+# raising it would cost half a byte per element in every `array_value`, forever, to buy
+# room for variants 17..255 that OTLP will not plausibly reach. It keeps its auto
+# capacity of 16 — eight variants used, eight spare.
 OtlpTraces = DataGraph(
     'OtlpTraces',
     root_type=t.ref('TracesData'),
     node_types=[
-        Enum('SpanFlags', {0: 'SPAN_FLAGS_DO_NOT_USE', 255: 'SPAN_FLAGS_TRACE_FLAGS_MASK', 256: 'SPAN_FLAGS_CONTEXT_HAS_IS_REMOTE_MASK', 512: 'SPAN_FLAGS_CONTEXT_IS_REMOTE_MASK'}, capacity=65535),
         Node('TracesData', fields=[
             'resource_spans' >> t.ref("ResourceSpans").array,
         ], packed=True),
@@ -54,9 +81,16 @@ OtlpTraces = DataGraph(
             'spans' >> t.ref("Span").array,
             'schema_url' >> t.utf8,
         ], packed=True),
-        Enum('SpanKind', ['SPAN_KIND_UNSPECIFIED', 'SPAN_KIND_INTERNAL', 'SPAN_KIND_SERVER', 'SPAN_KIND_CLIENT', 'SPAN_KIND_PRODUCER', 'SPAN_KIND_CONSUMER']),
+        Enum('SpanKind', {
+            0: 'SPAN_KIND_UNSPECIFIED',
+            1: 'SPAN_KIND_INTERNAL',
+            2: 'SPAN_KIND_SERVER',
+            3: 'SPAN_KIND_CLIENT',
+            4: 'SPAN_KIND_PRODUCER',
+            5: 'SPAN_KIND_CONSUMER',
+        }, capacity=255),
         Node('Event', fields=[
-            'time_unix_nano' >> t.u64,
+            'time_unix_nano' >> t.u64 >> raw,
             'name' >> t.utf8,
             'attributes' >> t.ref("KeyValue").array,
             'dropped_attributes_count' >> t.u32,
@@ -77,8 +111,8 @@ OtlpTraces = DataGraph(
             'flags' >> t.u32,
             'name' >> t.utf8,
             'kind' >> t.ref("SpanKind"),
-            'start_time_unix_nano' >> t.u64,
-            'end_time_unix_nano' >> t.u64,
+            'start_time_unix_nano' >> t.u64 >> raw,
+            'end_time_unix_nano' >> t.u64 >> raw,
             'attributes' >> t.ref("KeyValue").array,
             'dropped_attributes_count' >> t.u32,
             'events' >> t.ref("Event").array,
@@ -87,28 +121,39 @@ OtlpTraces = DataGraph(
             'dropped_links_count' >> t.u32,
             'status' >> t.ref("Status"),
         ], packed=True),
-        Enum('StatusCode', ['STATUS_CODE_UNSET', 'STATUS_CODE_OK', 'STATUS_CODE_ERROR']),
+        Enum('StatusCode', {
+            0: 'STATUS_CODE_UNSET',
+            1: 'STATUS_CODE_OK',
+            2: 'STATUS_CODE_ERROR',
+        }, capacity=255),
         Node('Status', fields=[
             'message' >> t.utf8,
             'code' >> t.ref("StatusCode"),
         ], packed=True),
-        # `message AnyValue { oneof value }` — collapsed to the union itself (no wrapper node)
+        # `message AnyValue { oneof value }` — collapsed to the union itself (no wrapper
+        # node), and so are ArrayValue and KeyValueList. Those two exist in the proto for
+        # one reason, which the proto says out loud: "We need KeyValueList as a message
+        # since `oneof` in AnyValue does not allow repeated fields." That is a protobuf
+        # limitation, not a shape in the data — a Dagr union takes an array variant
+        # directly. Collapsing them removes a node, an indirection and a length prefix
+        # per nested value, and loses nothing: an empty array is still representable,
+        # because the variant tag, not the payload, says which variant is present.
         UnionType('AnyValue', types=[
             ('string_value', t.utf8),
             ('bool_value', t.bool),
             ('int_value', t.i64),
             ('double_value', t.f64),
-            ('array_value', t.ref("ArrayValue")),
-            ('kvlist_value', t.ref("KeyValueList")),
+            # array_with_optionals, not array: `repeated AnyValue` can hold an element
+            # with no oneof set — pdata calls it ValueTypeEmpty — and a plain array has
+            # no way to say "absent". It does not drop the element, which would renumber
+            # the slice; it coerces it to the union's zero variant, so ["a", , "c"] comes
+            # back as ["a", "", "c"]. The nil bitset costs (count+7)/8 bytes per array
+            # and is the only way to round-trip the shape faithfully.
+            ('array_value', t.ref("AnyValue").array_with_optionals),
+            ('kvlist_value', t.ref("KeyValue").array),
             ('bytes_value', t.data),
             ('string_value_strindex', t.i32),
         ]),
-        Node('ArrayValue', fields=[
-            'values' >> t.ref("AnyValue").array,
-        ], packed=True),
-        Node('KeyValueList', fields=[
-            'values' >> t.ref("KeyValue").array,
-        ], packed=True),
         Node('KeyValue', fields=[
             'key' >> t.utf8,
             'value' >> t.ref("AnyValue"),

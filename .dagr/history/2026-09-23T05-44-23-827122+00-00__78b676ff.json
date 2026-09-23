@@ -1,0 +1,952 @@
+{
+  "library": {
+    "graphs": {
+      "OtlpTraces": {
+        "header": null,
+        "imports": [],
+        "name": "OtlpTraces",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource_spans",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceSpans"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "TracesData",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Resource"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope_spans",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ScopeSpans"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ResourceSpans",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "InstrumentationScope"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "spans",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Span"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ScopeSpans",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "as_bitset": false,
+            "capacity": 255,
+            "cases": {
+              "0": "SPAN_KIND_UNSPECIFIED",
+              "1": "SPAN_KIND_INTERNAL",
+              "2": "SPAN_KIND_SERVER",
+              "3": "SPAN_KIND_CLIENT",
+              "4": "SPAN_KIND_PRODUCER",
+              "5": "SPAN_KIND_CONSUMER"
+            },
+            "kind": "enum",
+            "name": "SpanKind"
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Event",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_state",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Link",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_state",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "parent_span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "kind",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "SpanKind"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "start_time_unix_nano",
+                "options": 8,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "end_time_unix_nano",
+                "options": 8,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "events",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Event"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_events_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "links",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Link"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_links_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "status",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Status"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Span",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "as_bitset": false,
+            "capacity": 255,
+            "cases": {
+              "0": "STATUS_CODE_UNSET",
+              "1": "STATUS_CODE_OK",
+              "2": "STATUS_CODE_ERROR"
+            },
+            "kind": "enum",
+            "name": "StatusCode"
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "message",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "code",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "StatusCode"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Status",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "capacity": 16,
+            "kind": "union",
+            "name": "AnyValue",
+            "types": [
+              {
+                "name": "string_value",
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "name": "bool_value",
+                "type": {
+                  "kind": "bool"
+                }
+              },
+              {
+                "name": "int_value",
+                "type": {
+                  "kind": "i64"
+                }
+              },
+              {
+                "name": "double_value",
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "name": "array_value",
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "AnyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "name": "kvlist_value",
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "name": "bytes_value",
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "name": "string_value_strindex",
+                "type": {
+                  "kind": "i32"
+                }
+              }
+            ]
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "key",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "value",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "AnyValue"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "key_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "KeyValue",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "version",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "InstrumentationScope",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "type",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "id_keys",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "utf8"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "description_keys",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "utf8"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "EntityRef",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "entity_refs",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "EntityRef"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Resource",
+            "packed": true,
+            "prefabs": {}
+          }
+        ],
+        "root_type": {
+          "kind": "ref",
+          "ref": "TracesData"
+        }
+      }
+    },
+    "ir_version": 1,
+    "name": "otlp_dagr",
+    "schemas": [
+      {
+        "kind": "graph",
+        "name": "OtlpTraces"
+      },
+      {
+        "kind": "sink",
+        "name": "SpanLog"
+      }
+    ],
+    "shared_buffers": {},
+    "sinks": {
+      "SpanLog": {
+        "doubly_linked": true,
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpTraces",
+            "package_name": null
+          }
+        ],
+        "meta_types": [],
+        "name": "SpanLog",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "received_unix_nano",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_count",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "traces",
+                "options": 9,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "TracesData"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Batch",
+            "packed": false,
+            "prefabs": {}
+          }
+        ]
+      }
+    },
+    "wire_format_version": 1
+  },
+  "library_hash": "sha256:78b676ff26b022ccda3efcb152fcac27005f1429de0a2f4cafc3fc2861f86aff",
+  "outputs": {
+    "go/gen/dagr/reader.go": "sha256:52241688c1535ab8ea98b014aebebe26e8a3baab174840afe07ea0d4e0231363",
+    "go/gen/dagr/writer.go": "sha256:ad1281ed85c2c251d3fbd7623b93d8cefef4b13bf163efa989cacd2734329ec0",
+    "go/gen/go.mod": "sha256:cf4447fba3d4bdf7cc7051b546fe23502726ae6bd31a658b98c6982652c77206",
+    "go/gen/otlp_traces.go": "sha256:5ea84e77177a2f06753cf8d23a8adc2e4d3d6665332a3398efa128c626235a09",
+    "go/gen/otlp_traces_arena.go": "sha256:3f84e5e9642c0e392bafb11531d1f5e369ebb4a3ae4e5840889a82400cb5807d",
+    "go/gen/otlp_traces_serde.go": "sha256:e970bf8d551d96dd019c73c2aec3cec95f5c7a09e59b26560cb9fd03bfd2dccf",
+    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:53ee4661cf292a183f7121d4732511b936a1f3d6818af7cd82458840361cc6d0",
+    "go/gen/spanlog/span_log.go": "sha256:b0cfdf9bc9fed231cf90574bb3837f7b8963f406c7e36c40ace73bb8820d6df5"
+  },
+  "provenance": {
+    "command": "dagr build",
+    "generated_at": "2026-09-23T05:44:23.827122+00:00",
+    "host": null,
+    "tool_version": "dagr 2026.9.0"
+  },
+  "receipt_version": 1,
+  "targets": [
+    {
+      "exclude": [],
+      "features": [],
+      "lang": "go",
+      "layout": null,
+      "out": "go/gen",
+      "package": "otlptraces"
+    }
+  ]
+}
