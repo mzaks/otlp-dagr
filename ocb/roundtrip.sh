@@ -3,7 +3,7 @@
 # and profiles, each out to its own Dagr spool and back in — spec/38 §6.1.1 gate 2, plus
 # gates 3 and 4 on the files the collector produced.
 #
-#   ./ocb/roundtrip.sh              # build if needed, then round trip
+#   ./ocb/roundtrip.sh              # build if missing or stale, then round trip
 #   ./ocb/roundtrip.sh build        # build the collector only
 #   SPANS=5000 BATCHES=8 ./ocb/roundtrip.sh
 #
@@ -59,7 +59,11 @@ run_phase() {  # run_phase <name> <config> <ready-log-fragment>
 }
 
 [ "${1:-}" = "build" ] && { build; exit 0; }
-[ -x "$BIN" ] || build
+# Rebuild when the binary is missing OR older than any Go source it is built from — a
+# stale collector silently round-trips the OLD wire format.
+if [ ! -x "$BIN" ] || [ -n "$(find "$ROOT/go" -name '*.go' -newer "$BIN" -print -quit)" ]; then
+  build
+fi
 
 SIGNALS="metrics logs profiles"
 rm -rf "$WORK/spans.dagr" "$WORK/out.json"
