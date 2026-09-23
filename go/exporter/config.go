@@ -5,10 +5,9 @@
 // The whole exporter is one step: encode the batch into a spool record and append it.
 // The record holds the batch's top-level array (ResourceSpans, ...) inline, written with
 // the signal graph's own generated code, so those bytes are exactly what the graph's
-// direct builder (spec 33) writes. Traces go through a one-pass StreamBuilder that walks
-// the borrowed pdata accessors straight into the record with no arena and no
-// intermediate tree — the path that measured 1.50x protobuf's marshal while allocating
-// nothing per batch; the other signals build a value tree first.
+// direct builder (spec 33) writes. Every signal goes through a one-pass StreamBuilder
+// that walks the borrowed pdata accessors straight into the record with no arena and no
+// intermediate tree, allocating nothing per batch at steady state.
 //
 // It deliberately does not wrap itself in exporterhelper's queue and retry machinery.
 // The spool IS the queue — that is the point of spec/38 §6.1 — and putting a second,

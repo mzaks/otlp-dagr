@@ -187,6 +187,141 @@ func scope(s pcommon.InstrumentationScope) d.InstrumentationScope {
 	}
 }
 
+// ── one-pass encode: what every signal's StreamBuilder shares ──────────────────
+//
+// A one-pass encoder walks pdata once and writes straight into the buffer: the container
+// levels by hand, and each leaf (a span, a metric, a log record, a profile) as a value
+// struct built in reused scratch and written with its generated Put{N}. These are the
+// pieces every signal needs for that.
+
+// pool hands out slices of one reused backing array; reset it before each leaf. Growing
+// allocates a fresh array, but the slices already handed out keep the old one, so they
+// stay valid until the leaf is written — and once the pool has grown to the largest leaf
+// it never allocates again.
+type pool[T any] struct {
+	buf []T
+	n   int
+}
+
+func (p *pool[T]) reset() { p.n = 0 }
+
+func (p *pool[T]) take(k int) []T {
+	if p.n+k > len(p.buf) {
+		p.buf = make([]T, max(2*len(p.buf), k, 16))
+		p.n = 0
+	}
+	s := p.buf[p.n : p.n+k : p.n+k]
+	p.n += k
+	return s
+}
+
+// attrsInto fills attributes from pool; absent when the map is empty.
+func attrsInto(p *pool[d.KeyValue], m pcommon.Map) dagr.Opt[[]d.KeyValue] {
+	if m.Len() == 0 {
+		return dagr.Opt[[]d.KeyValue]{}
+	}
+	dst := p.take(m.Len())
+	n := 0
+	m.Range(func(k string, v pcommon.Value) bool {
+		kv := d.KeyValue{Key: nonEmpty(k)}
+		if av, ok := attrValue(v); ok {
+			kv.Value = some(av)
+		}
+		dst[n] = kv
+		n++
+		return true
+	})
+	return optSlice(dst[:n])
+}
+
+// idInto copies a trace / span id into pool; absent when it is all zero.
+func idInto(p *pool[byte], id []byte) dagr.Opt[[]byte] {
+	for _, c := range id {
+		if c != 0 {
+			s := p.take(len(id))
+			copy(s, id)
+			return some(s)
+		}
+	}
+	return dagr.Opt[[]byte]{}
+}
+
+// levels writes the two container levels every signal shares, Resource{X} and
+// Scope{X}: both are {node 0, [items] 1, schema_url 2}, so field tags 1, 3 and 5.
+type levels struct{ kv pool[d.KeyValue] }
+
+// putLevel writes one container node: schema_url, the n items (item writes item k), then
+// the head node (the Resource or the InstrumentationScope, always present — as the
+// value-tree bridge writes it) and the node's size.
+func putLevel(buf []byte, i int, schemaURL string, n int,
+	item func(k int, buf []byte, i int) ([]byte, int),
+	head func(buf []byte, i int) ([]byte, int)) ([]byte, int) {
+	before := len(buf) - i
+	if schemaURL != "" {
+		buf, i = dagr.PutUtf8TaggedAt(buf, i, schemaURL, 5)
+	}
+	if n > 0 {
+		buf, i = putArray(buf, i, n, item)
+		buf, i = dagr.PutLEBAt(buf, i, 3)
+	}
+	buf, i = head(buf, i)
+	buf, i = dagr.PutLEBAt(buf, i, 1)
+	return dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
+}
+
+// putArray writes a packed node array's content — items last to first, count, block
+// size — without the field tag.
+func putArray(buf []byte, i int, n int, item func(k int, buf []byte, i int) ([]byte, int)) ([]byte, int) {
+	a := len(buf) - i
+	for k := n - 1; k >= 0; k-- {
+		buf, i = item(k, buf, i)
+	}
+	buf, i = dagr.PutLEBAt(buf, i, uint64(n))
+	return dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-a))
+}
+
+func (w *levels) putResource(r pcommon.Resource, b *dagr.Builder, buf []byte, i int) ([]byte, int) {
+	w.kv.reset()
+	return d.PutResource(d.Resource{
+		Attributes:             attrsInto(&w.kv, r.Attributes()),
+		DroppedAttributesCount: nonZeroU32(r.DroppedAttributesCount()),
+	}, b, buf, i)
+}
+
+func (w *levels) putScope(s pcommon.InstrumentationScope, b *dagr.Builder, buf []byte, i int) ([]byte, int) {
+	w.kv.reset()
+	return d.PutInstrumentationScope(d.InstrumentationScope{
+		Name:                   nonEmpty(s.Name()),
+		Version:                nonEmpty(s.Version()),
+		Attributes:             attrsInto(&w.kv, s.Attributes()),
+		DroppedAttributesCount: nonZeroU32(s.DroppedAttributesCount()),
+	}, b, buf, i)
+}
+
+// putRecordEnvelope wraps an already-written record body tail — every field from index
+// 2 on — with the two envelope scalars every spool's Batch starts with
+// (received_unix_nano: raw u64, field 0; the item count: u32, field 1) and the record's
+// size. before is the builder position the body started at.
+func putRecordEnvelope(buf []byte, i, before int, receivedUnixNano uint64, count uint32) ([]byte, int) {
+	if c := uint64(count); dagr.LebLength(c) < 4 {
+		buf, i = dagr.PutLEBTaggedAt(buf, i, c, 2)
+	} else {
+		buf, i = dagr.PutFixedAt(buf, i, c, 4)
+		buf, i = dagr.PutLEBAt(buf, i, 3)
+	}
+	buf, i = dagr.PutFixedAt(buf, i, receivedUnixNano, 8)
+	buf, i = dagr.PutLEBAt(buf, i, 1)
+	return dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
+}
+
+// finishGraph frames a graph buffer whose root node ends at the builder's cursor, as the
+// generated build() does (no alignment: no OTLP graph has an aligned field).
+func finishGraph(b *dagr.Builder, dst []byte) []byte {
+	off := b.Cursor()
+	b.StoreLEB(uint64(b.Cursor()-off) << 2)
+	return b.AppendTo(dst)
+}
+
 // ── decode: the shared messages, Dagr -> pdata ───────────────────────────────
 
 // putResource copies a Dagr Resource into pdata.

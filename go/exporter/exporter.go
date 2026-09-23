@@ -21,9 +21,6 @@ import (
 	"otlpdagr/pdatabridge"
 	"otlpdagr/profilebridge"
 	"otlpdagr/spool"
-	"otlpgen/logrecordlog"
-	"otlpgen/metriclog"
-	"otlpgen/profilelog"
 )
 
 var errShutDown = errors.New("dagrfile: exporter is not running")
@@ -74,10 +71,9 @@ type base struct {
 
 	mu sync.Mutex
 	w  *spool.Writer
-	// The record slice is held and reused, so the traces encode allocates nothing at
-	// steady state (spec/38 §10.2.1): a one-pass StreamBuilder writes the record. The
-	// other signals build a value tree first and append it through the spool's typed
-	// append, which stores it with the graph's generated code.
+	// The record slice is held and reused, and every signal's one-pass StreamBuilder
+	// writes the record straight from pdata, so the encode allocates nothing at steady
+	// state (spec/38 §10.2.1).
 	dst []byte
 }
 
@@ -166,36 +162,53 @@ func (e *tracesExporter) ConsumeTraces(_ context.Context, td ptrace.Traces) erro
 	})
 }
 
-type metricsExporter struct{ base }
+type metricsExporter struct {
+	base
+	enc *metricbridge.StreamBuilder
+}
 
 func (e *metricsExporter) ConsumeMetrics(_ context.Context, md pmetric.Metrics) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.enc == nil {
+		e.enc = metricbridge.NewStreamBuilder()
+	}
 	return e.append(func(t uint64) error {
-		return e.w.AppendMetrics(metriclog.Batch{ReceivedUnixNano: t, DataPointCount: uint32(md.DataPointCount()),
-			ResourceMetrics: metricbridge.ToValue(md).ResourceMetrics.V})
+		e.dst = e.enc.AppendRecord(e.dst[:0], t, md)
+		return e.w.AppendRecord(e.dst)
 	})
 }
 
-type logsExporter struct{ base }
+type logsExporter struct {
+	base
+	enc *logbridge.StreamBuilder
+}
 
 func (e *logsExporter) ConsumeLogs(_ context.Context, ld plog.Logs) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.enc == nil {
+		e.enc = logbridge.NewStreamBuilder()
+	}
 	return e.append(func(t uint64) error {
-		return e.w.AppendLogs(logrecordlog.Batch{ReceivedUnixNano: t, LogRecordCount: uint32(ld.LogRecordCount()),
-			ResourceLogs: logbridge.ToValue(ld).ResourceLogs.V})
+		e.dst = e.enc.AppendRecord(e.dst[:0], t, ld)
+		return e.w.AppendRecord(e.dst)
 	})
 }
 
-type profilesExporter struct{ base }
+type profilesExporter struct {
+	base
+	enc *profilebridge.StreamBuilder
+}
 
 func (e *profilesExporter) ConsumeProfiles(_ context.Context, pd pprofile.Profiles) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.enc == nil {
+		e.enc = profilebridge.NewStreamBuilder()
+	}
 	return e.append(func(t uint64) error {
-		v := profilebridge.ToValue(pd)
-		return e.w.AppendProfiles(profilelog.Batch{ReceivedUnixNano: t, SampleCount: uint32(pd.SampleCount()),
-			ResourceProfiles: v.ResourceProfiles.V, Dictionary: v.Dictionary})
+		e.dst = e.enc.AppendRecord(e.dst[:0], t, pd)
+		return e.w.AppendRecord(e.dst)
 	})
 }

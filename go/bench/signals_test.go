@@ -291,6 +291,7 @@ func BenchmarkSignal(b *testing.B) {
 		fn   func()
 	}
 	mb, lb, pb := metricbridge.NewBuilder(), logbridge.NewBuilder(), profilebridge.NewBuilder()
+	ms, ls, ps := metricbridge.NewStreamBuilder(), logbridge.NewStreamBuilder(), profilebridge.NewStreamBuilder()
 	var dst []byte
 	// The serializer alone, from a value tree built once: encode/dagr minus the bridge's
 	// tree construction — the split that located the traces encode cost (§10.2.1).
@@ -303,6 +304,7 @@ func BenchmarkSignal(b *testing.B) {
 		{"metrics", []pair{
 			{"encode/proto", func() { sinkAny = must((&pmetric.ProtoMarshaler{}).MarshalMetrics(metricsIn)) }},
 			{"encode/dagr", func() { dst = mb.BuildAppend(dst[:0], metricsIn) }},
+			{"encode/dagr_stream", func() { dst = ms.BuildAppend(dst[:0], metricsIn) }},
 			{"encode/dagr_serialize_only", func() { dst = mdb.BuildAppend(dst[:0], mv) }},
 			{"to_pdata/proto", func() { sinkAny, _ = (&pmetric.ProtoUnmarshaler{}).UnmarshalMetrics(metricsPB) }},
 			{"to_pdata/dagr", func() { sinkAny, _ = metricbridge.ToMetrics(metricsDagr) }},
@@ -312,6 +314,7 @@ func BenchmarkSignal(b *testing.B) {
 		{"logs", []pair{
 			{"encode/proto", func() { sinkAny = must((&plog.ProtoMarshaler{}).MarshalLogs(logsIn)) }},
 			{"encode/dagr", func() { dst = lb.BuildAppend(dst[:0], logsIn) }},
+			{"encode/dagr_stream", func() { dst = ls.BuildAppend(dst[:0], logsIn) }},
 			{"encode/dagr_serialize_only", func() { dst = ldb.BuildAppend(dst[:0], lv) }},
 			{"to_pdata/proto", func() { sinkAny, _ = (&plog.ProtoUnmarshaler{}).UnmarshalLogs(logsPB) }},
 			{"to_pdata/dagr", func() { sinkAny, _ = logbridge.ToLogs(logsDagr) }},
@@ -323,6 +326,7 @@ func BenchmarkSignal(b *testing.B) {
 			// after, so every iteration marshals the same (already-normalised) batch.
 			{"encode/proto", func() { sinkAny = must((&pprofile.ProtoMarshaler{}).MarshalProfiles(profilesIn)) }},
 			{"encode/dagr", func() { dst = pb.BuildAppend(dst[:0], profilesIn) }},
+			{"encode/dagr_stream", func() { dst = ps.BuildAppend(dst[:0], profilesIn) }},
 			{"encode/dagr_serialize_only", func() { dst = pdb.BuildAppend(dst[:0], pv) }},
 			{"to_pdata/proto", func() { sinkAny, _ = (&pprofile.ProtoUnmarshaler{}).UnmarshalProfiles(profilesPB) }},
 			{"to_pdata/dagr", func() { sinkAny, _ = profilebridge.ToProfiles(profilesDagr) }},
