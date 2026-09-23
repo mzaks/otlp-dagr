@@ -1,4 +1,5 @@
-// Package spool is the file side of the SpanLog DataSink: create or resume a spool,
+// Package spool is the file side of the four OTLP DataSinks (SpanLog, MetricLog,
+// LogRecordLog, ProfileLog — one per Signal, see signal.go): create or resume a spool,
 // append batches, read them back forward or newest-first, and — the part a write-ahead
 // log lives or dies on — decide whether the tail is intact.
 //
@@ -23,8 +24,7 @@ import (
 	"io"
 	"os"
 
-	"otlptraces/dagr"
-	"otlptraces/spanlog"
+	"otlpgen/dagr"
 )
 
 // ── Writing ──────────────────────────────────────────────────────────────────
@@ -34,18 +34,19 @@ import (
 // exactly what CheckTail detects.
 type Writer struct {
 	f   *os.File
-	w   *spanlog.SpanLogWriter
+	w   framedWriter
+	sig Signal
 	n   int   // records appended by THIS writer
 	off int64 // file size when this writer opened it (0 for a fresh spool)
 }
 
-// Create starts a new spool at path, truncating anything already there.
-func Create(path string) (*Writer, error) {
+// Create starts a new spool for sig at path, truncating anything already there.
+func Create(path string, sig Signal) (*Writer, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return nil, err
 	}
-	w := &Writer{f: f, w: spanlog.NewSpanLogStreamWriter(f)}
+	w := &Writer{f: f, w: sig.ops().newWriter(f), sig: sig}
 	// Write the framing word up front: a spool opened and not yet written to is still a
 	// valid, empty stream, so a reader started before the first batch sees a stream
 	// rather than an empty file.
@@ -65,16 +66,16 @@ func Create(path string) (*Writer, error) {
 // never silently kept.
 //
 // A missing or empty file is not an error — Resume creates the spool.
-func Resume(path string) (*Writer, Recovery, error) {
+func Resume(path string, sig Signal) (*Writer, Recovery, error) {
 	st, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) || (err == nil && st.Size() == 0) {
-		w, cErr := Create(path)
+		w, cErr := Create(path, sig)
 		return w, Recovery{Fresh: true}, cErr
 	}
 	if err != nil {
 		return nil, Recovery{}, err
 	}
-	rec, err := Recover(path)
+	rec, err := Recover(path, sig)
 	if err != nil {
 		return nil, rec, err
 	}
@@ -96,16 +97,16 @@ func Resume(path string) (*Writer, Recovery, error) {
 	//   * the RecordRange that AppendBatch returns is relative to the wrong origin, so
 	//     Append discards it (read ranges back through the Reader instead);
 	//   * a record embedding an ALIGNED raw leaf would compute its pad from that wrong
-	//     origin and misalign. SpanLog's leaf has no aligned field (its max alignment is
+	//     origin and misalign. No OTLP leaf has an aligned field (its max alignment is
 	//     1, so the generator emits no padding pass at all), but a schema that did would
 	//     need the writer to be resumable for real — an Open{S}Writer over an existing
 	//     stream, in the generator, rather than this wrapper.
-	sw := spanlog.NewSpanLogStreamWriter(&skipFraming{to: f})
+	sw := sig.ops().newWriter(&skipFraming{to: f})
 	if err := sw.EnsureFraming(); err != nil {
 		f.Close()
 		return nil, rec, err
 	}
-	return &Writer{f: f, w: sw, off: rec.ValidEnd}, rec, nil
+	return &Writer{f: f, w: sw, sig: sig, off: rec.ValidEnd}, rec, nil
 }
 
 // skipFraming drops the first Write (the framing word the stream is already carrying)
@@ -124,16 +125,12 @@ func (s *skipFraming) Write(p []byte) (int, error) {
 	return s.to.Write(p)
 }
 
-// Append writes one batch: the encoded OtlpTraces buffer verbatim as the record's raw
+// Append writes one batch: the encoded Otlp{Signal} buffer verbatim as the record's raw
 // embedded leaf (spec 18 §11), plus the two envelope fields a reverse reader can answer
-// questions from without opening the leaf at all.
-func (w *Writer) Append(receivedUnixNano uint64, spanCount uint32, traces []byte) error {
-	_, err := w.w.AppendBatch(spanlog.Batch{
-		ReceivedUnixNano: receivedUnixNano,
-		SpanCount:        spanCount,
-		Traces:           traces,
-	})
-	if err != nil {
+// questions from without opening the leaf at all. count is in the signal's own unit —
+// spans, data points, log records or samples.
+func (w *Writer) Append(receivedUnixNano uint64, count uint32, payload []byte) error {
+	if err := w.w.append(receivedUnixNano, count, payload); err != nil {
 		return err
 	}
 	w.n++
@@ -149,84 +146,58 @@ func (w *Writer) Close() error { return w.f.Close() }
 // Appended is how many records THIS writer added (not the spool's total).
 func (w *Writer) Appended() int { return w.n }
 
+// Signal is the spool's signal.
+func (w *Writer) Signal() Signal { return w.sig }
+
 // ── Reading ──────────────────────────────────────────────────────────────────
 
 // Batch is one spool record: the envelope fields, and the embedded OTLP buffer as a
 // sub-slice of the spool bytes — no copy, no decode.
 type Batch struct {
 	ReceivedUnixNano uint64
-	SpanCount        uint32
-	Traces           []byte
-	Range            spanlog.SpanLogRecordRange
+	Count            uint32 // spans / data points / log records / samples
+	Payload          []byte // an Otlp{Traces,Metrics,Logs,Profiles} buffer
+	Range            Range
 }
 
 // Reader is a spool held in memory (the whole file; spools are rotated, not unbounded).
-type Reader struct{ buf []byte }
+type Reader struct {
+	buf []byte
+	sig Signal
+}
 
 // Open reads path and validates the stream framing.
-func Open(path string) (*Reader, error) {
+func Open(path string, sig Signal) (*Reader, error) {
 	buf, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return OpenBytes(buf)
+	return OpenBytes(buf, sig)
 }
 
 // OpenBytes is Open over bytes already in hand.
-func OpenBytes(buf []byte) (*Reader, error) {
-	if _, err := spanlog.OpenSpanLogReader(buf); err != nil {
+func OpenBytes(buf []byte, sig Signal) (*Reader, error) {
+	if _, err := sig.ops().recordsStart(buf); err != nil {
 		return nil, err
 	}
-	return &Reader{buf: buf}, nil
+	return &Reader{buf: buf, sig: sig}, nil
 }
+
+// Signal is the spool's signal.
+func (r *Reader) Signal() Signal { return r.sig }
 
 // Bytes is the spool's raw content.
 func (r *Reader) Bytes() []byte { return r.buf }
 
 // Forward calls fn for every batch oldest-first, stopping early if fn returns false.
-func (r *Reader) Forward(fn func(Batch) bool) error {
-	rd, err := spanlog.OpenSpanLogReader(r.buf)
-	if err != nil {
-		return err
-	}
-	for {
-		rec, ok := rd.Next()
-		if !ok {
-			return nil
-		}
-		b, ok := toBatch(rec)
-		if !ok {
-			continue // a typeId this build does not know: skipped for free (spec 11 §2)
-		}
-		if !fn(b) {
-			return nil
-		}
-	}
-}
+// A record of a typeId this build does not know is skipped for free (spec 11 §2).
+func (r *Reader) Forward(fn func(Batch) bool) error { return forward(r.sig, r.buf, fn) }
 
 // Reverse calls fn for every batch NEWEST-first, stopping early if fn returns false.
 //
 // This is the whole point of the doubly-linked sink: answering "the last N batches"
 // touches N records, not the whole spool, with no index and no forward pass.
-func (r *Reader) Reverse(fn func(Batch) bool) error {
-	rd, err := spanlog.OpenSpanLogReverseReader(r.buf)
-	if err != nil {
-		return err
-	}
-	for {
-		rec, ok := rd.Prev()
-		if !ok {
-			return nil
-		}
-		b, ok := toBatch(rec)
-		if !ok {
-			continue
-		}
-		if !fn(b) {
-			return nil
-		}
-	}
-}
+func (r *Reader) Reverse(fn func(Batch) bool) error { return reverse(r.sig, r.buf, fn) }
 
 // Last returns the newest n batches, newest first (fewer if the spool is shorter).
 func (r *Reader) Last(n int) ([]Batch, error) {
@@ -241,31 +212,19 @@ func (r *Reader) Last(n int) ([]Batch, error) {
 	return out, err
 }
 
-// LastSpans walks backwards until it has accounted for at least n spans, and returns the
-// batches that hold them, newest first — the "last N spans before the crash" query.
-// Only the envelope's span_count is read; no embedded batch is opened.
-func (r *Reader) LastSpans(n int) ([]Batch, int, error) {
+// LastItems walks backwards until it has accounted for at least n items (spans, data
+// points, log records or samples), and returns the batches that hold them, newest first
+// — the "last N spans before the crash" query. Only the envelope's count is read; no
+// embedded batch is opened.
+func (r *Reader) LastItems(n int) ([]Batch, int, error) {
 	var out []Batch
 	total := 0
 	err := r.Reverse(func(b Batch) bool {
 		out = append(out, b)
-		total += int(b.SpanCount)
+		total += int(b.Count)
 		return total < n
 	})
 	return out, total, err
-}
-
-func toBatch(rec spanlog.SpanLogRecord) (Batch, bool) {
-	v, ok := rec.Batch()
-	if !ok {
-		return Batch{}, false
-	}
-	return Batch{
-		ReceivedUnixNano: v.ReceivedUnixNano,
-		SpanCount:        v.SpanCount,
-		Traces:           v.Traces,
-		Range:            rec.Range(),
-	}, true
 }
 
 // ── Tail integrity ───────────────────────────────────────────────────────────
@@ -326,12 +285,11 @@ const ValidateDepth = 32
 //
 // Only when the chain breaks does the spool get scanned forward, to find the last offset
 // where it did hold. That is a one-off cost on a crash, not the steady state.
-func CheckTail(buf []byte) (Recovery, error) {
-	rd, err := spanlog.OpenSpanLogReader(buf)
+func CheckTail(buf []byte, sig Signal) (Recovery, error) {
+	start, err := sig.ops().recordsStart(buf)
 	if err != nil {
 		return Recovery{}, err
 	}
-	start := rd.RecordsStart()
 	if len(buf) == start {
 		return Recovery{ValidEnd: int64(start), Backward: true}, nil
 	}
@@ -357,12 +315,12 @@ func CheckTail(buf []byte) (Recovery, error) {
 
 // Recover applies CheckTail to the file at path and truncates a torn tail away, so the
 // spool that Resume then appends to is a single well-formed stream.
-func Recover(path string) (Recovery, error) {
+func Recover(path string, sig Signal) (Recovery, error) {
 	buf, err := os.ReadFile(path)
 	if err != nil {
 		return Recovery{}, err
 	}
-	rec, err := CheckTail(buf)
+	rec, err := CheckTail(buf, sig)
 	if err != nil {
 		return rec, err
 	}
@@ -377,12 +335,11 @@ func Recover(path string) (Recovery, error) {
 // CountBackward walks the whole spool newest-first, validating every step, and returns
 // the record count. Unlike Reverse it never trusts an RLEB it has not cross-checked, so
 // it also answers "is this spool internally consistent end to end".
-func CountBackward(buf []byte) (int, error) {
-	rd, err := spanlog.OpenSpanLogReader(buf)
+func CountBackward(buf []byte, sig Signal) (int, error) {
+	start, err := sig.ops().recordsStart(buf)
 	if err != nil {
 		return 0, err
 	}
-	start := rd.RecordsStart()
 	n := 0
 	for pos := len(buf); pos > start; n++ {
 		begin, err := stepBack(buf, pos, start)

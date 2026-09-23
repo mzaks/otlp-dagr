@@ -1,4 +1,10 @@
-Vendored verbatim from open-telemetry/opentelemetry-proto @ main branch tarball, fetched 2026-09-21 (Apache-2.0).
-Only the files the traces signal needs are copied: common, resource, trace.
-Re-vendor by copying opentelemetry/proto/{common,resource,trace}/v1/*.proto from
-that repository over this tree; nothing here is edited.
+Vendored verbatim from open-telemetry/opentelemetry-proto @ main branch tarball
+(Apache-2.0). common, resource, trace fetched 2026-09-21; metrics, logs,
+profiles/v1development fetched 2026-09-23 (common/resource/trace re-checked
+byte-identical to main the same day).
+Only the data-model files are copied — not collector/*_service.proto (an
+Export*ServiceRequest is field-for-field its *Data message) and not
+processcontext/v1development (not a signal).
+Re-vendor by copying opentelemetry/proto/{common,resource,trace,metrics,logs}/v1/*.proto
+and profiles/v1development/*.proto from that repository over this tree; nothing
+here is edited.

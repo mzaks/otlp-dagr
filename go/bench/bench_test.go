@@ -24,7 +24,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 
-	g "otlptraces"
+	g "otlpgen/otlptraces"
 
 	"otlpdagr/internal/fixture"
 	"otlpdagr/internal/seed"

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	g "otlptraces"
+	g "otlpgen/otlptraces"
 )
 
 // Sampler is a tail sampler whose buffer is the spool (spec/38 §6.2).

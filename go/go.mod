@@ -2,7 +2,7 @@ module otlpdagr
 
 go 1.26.0
 
-replace otlptraces => ./gen
+replace otlpgen => ./gen
 
 require (
 	go.opentelemetry.io/collector/component v1.67.0
@@ -15,7 +15,7 @@ require (
 	go.opentelemetry.io/collector/receiver v1.67.0
 	go.opentelemetry.io/collector/receiver/receivertest v0.161.0
 	go.uber.org/zap v1.28.0
-	otlptraces v0.0.0-00010101000000-000000000000
+	otlpgen v0.0.0-00010101000000-000000000000
 )
 
 require (

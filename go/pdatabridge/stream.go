@@ -4,8 +4,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"otlptraces/dagr"
-	d "otlptraces/otlptracesdirect"
+	"otlpgen/dagr"
+	d "otlpgen/otlptracesdirect"
 )
 
 // StreamBuilder walks pdata straight into the buffer: nothing batch-sized is ever
@@ -88,7 +88,10 @@ func (w *StreamBuilder) putResourceSpans(rs ptrace.ResourceSpans, b *dagr.Builde
 		buf, i = dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-a))
 		buf, i = dagr.PutLEBAt(buf, i, 3)
 	}
-	res := d.Resource{Attributes: w.otherAttrs(rs.Resource().Attributes())}
+	res := d.Resource{
+		Attributes:             w.otherAttrs(rs.Resource().Attributes()),
+		DroppedAttributesCount: nonZeroU32(rs.Resource().DroppedAttributesCount()),
+	}
 	buf, i = d.PutResource(res, b, buf, i)
 	buf, i = dagr.PutLEBAt(buf, i, 1) // field tag, as PutResourceSpans emits it
 	return dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
@@ -110,9 +113,10 @@ func (w *StreamBuilder) putScopeSpans(ss ptrace.ScopeSpans, b *dagr.Builder, buf
 		buf, i = dagr.PutLEBAt(buf, i, 3)
 	}
 	sc := d.InstrumentationScope{
-		Name:       nonEmpty(ss.Scope().Name()),
-		Version:    nonEmpty(ss.Scope().Version()),
-		Attributes: w.otherAttrs(ss.Scope().Attributes()),
+		Name:                   nonEmpty(ss.Scope().Name()),
+		Version:                nonEmpty(ss.Scope().Version()),
+		Attributes:             w.otherAttrs(ss.Scope().Attributes()),
+		DroppedAttributesCount: nonZeroU32(ss.Scope().DroppedAttributesCount()),
 	}
 	buf, i = d.PutInstrumentationScope(sc, b, buf, i)
 	buf, i = dagr.PutLEBAt(buf, i, 1) // field tag, as PutScopeSpans emits it

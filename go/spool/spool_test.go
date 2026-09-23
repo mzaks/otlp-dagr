@@ -21,7 +21,7 @@ func encode(t *testing.T, n int) ([]byte, uint32) {
 
 func writeSpool(t *testing.T, path string, sizes ...int) [][]byte {
 	t.Helper()
-	w, err := spool.Create(path)
+	w, err := spool.Create(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -46,13 +46,13 @@ func TestRecordIsTheEncoderOutputVerbatim(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spans.dagr")
 	want := writeSpool(t, path, 50, 7, 120)
 
-	r, err := spool.Open(path)
+	r, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	var got [][]byte
 	if err := r.Forward(func(b spool.Batch) bool {
-		got = append(got, b.Traces)
+		got = append(got, b.Payload)
 		return true
 	}); err != nil {
 		t.Fatalf("forward: %v", err)
@@ -93,7 +93,7 @@ func TestEmbeddedBatchReadsAsAGraph(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spans.dagr")
 	writeSpool(t, path, 40)
 
-	r, err := spool.Open(path)
+	r, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -101,14 +101,14 @@ func TestEmbeddedBatchReadsAsAGraph(t *testing.T) {
 	if err != nil || len(last) != 1 {
 		t.Fatalf("last: %v (%d records)", err, len(last))
 	}
-	td, err := pdatabridge.ToTraces(last[0].Traces)
+	td, err := pdatabridge.ToTraces(last[0].Payload)
 	if err != nil {
 		t.Fatalf("to traces: %v", err)
 	}
 	if got := td.SpanCount(); got != 40 {
 		t.Fatalf("span count %d, want 40", got)
 	}
-	if got := last[0].SpanCount; got != 40 {
+	if got := last[0].Count; got != 40 {
 		t.Fatalf("envelope span count %d, want 40", got)
 	}
 }
@@ -121,7 +121,7 @@ func TestReverseReaderYieldsNewestFirst(t *testing.T) {
 	sizes := []int{5, 11, 3, 29, 7, 13}
 	writeSpool(t, path, sizes...)
 
-	r, err := spool.Open(path)
+	r, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -135,8 +135,8 @@ func TestReverseReaderYieldsNewestFirst(t *testing.T) {
 		t.Fatalf("got %d batches, want 3", len(last3))
 	}
 	for i, w := range wantNewest {
-		if last3[i].SpanCount != w {
-			t.Fatalf("newest[%d] = %d spans, want %d", i, last3[i].SpanCount, w)
+		if last3[i].Count != w {
+			t.Fatalf("newest[%d] = %d spans, want %d", i, last3[i].Count, w)
 		}
 		if last3[i].ReceivedUnixNano != uint64(1000+len(sizes)-1-i) {
 			t.Fatalf("newest[%d] timestamp %d out of order", i, last3[i].ReceivedUnixNano)
@@ -144,7 +144,7 @@ func TestReverseReaderYieldsNewestFirst(t *testing.T) {
 	}
 
 	// The reverse walk visits exactly the records the forward walk does.
-	n, err := spool.CountBackward(r.Bytes())
+	n, err := spool.CountBackward(r.Bytes(), spool.Traces)
 	if err != nil {
 		t.Fatalf("count backward: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestReverseReaderYieldsNewestFirst(t *testing.T) {
 	}
 
 	// "The last 40 spans before the error" — §6.3's crash ring, without an index.
-	got, total, err := r.LastSpans(40)
+	got, total, err := r.LastItems(40)
 	if err != nil {
 		t.Fatalf("last spans: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestTornTailIsDetected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	rec, err := spool.CheckTail(whole)
+	rec, err := spool.CheckTail(whole, spool.Traces)
 	if err != nil {
 		t.Fatalf("check intact: %v", err)
 	}
@@ -193,11 +193,11 @@ func TestTornTailIsDetected(t *testing.T) {
 
 	// Every prefix that cuts into the last record must be reported torn, and must
 	// recover to exactly the same point: the end of the second record.
-	full, err := spool.CountBackward(whole)
+	full, err := spool.CountBackward(whole, spool.Traces)
 	if err != nil || full != len(sizes) {
 		t.Fatalf("count %d (%v), want %d", full, err, len(sizes))
 	}
-	r, err := spool.OpenBytes(whole)
+	r, err := spool.OpenBytes(whole, spool.Traces)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestTornTailIsDetected(t *testing.T) {
 
 	for cut := int64(len(whole)) - 1; cut > lastStart; cut-- {
 		torn := whole[:cut]
-		got, err := spool.CheckTail(torn)
+		got, err := spool.CheckTail(torn, spool.Traces)
 		if err != nil {
 			t.Fatalf("check tail at cut %d: %v", cut, err)
 		}
@@ -240,7 +240,7 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 		t.Fatalf("write torn: %v", err)
 	}
 
-	w, rec, err := spool.Resume(path)
+	w, rec, err := spool.Resume(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
@@ -257,13 +257,13 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	r, err := spool.Open(path)
+	r, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
 	var counts []uint32
 	if err := r.Forward(func(b spool.Batch) bool {
-		counts = append(counts, b.SpanCount)
+		counts = append(counts, b.Count)
 		return true
 	}); err != nil {
 		t.Fatalf("forward: %v", err)
@@ -271,7 +271,7 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 	if want := []uint32{6, 8, 12}; len(counts) != 3 || counts[0] != want[0] || counts[1] != want[1] || counts[2] != want[2] {
 		t.Fatalf("after resume the spool holds %v, want %v", counts, want)
 	}
-	n, err := spool.CountBackward(r.Bytes())
+	n, err := spool.CountBackward(r.Bytes(), spool.Traces)
 	if err != nil || n != 3 {
 		t.Fatalf("reverse count %d (%v), want 3", n, err)
 	}
@@ -294,14 +294,14 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 // first batch sees a framed sink.
 func TestEmptySpoolIsValid(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty.dagr")
-	w, err := spool.Create(path)
+	w, err := spool.Create(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	r, err := spool.Open(path)
+	r, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("open empty: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestEmptySpoolIsValid(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("empty spool yielded %d records", n)
 	}
-	rec, err := spool.CheckTail(r.Bytes())
+	rec, err := spool.CheckTail(r.Bytes(), spool.Traces)
 	if err != nil || rec.Torn != 0 {
 		t.Fatalf("empty spool tail: %s (%v)", rec, err)
 	}

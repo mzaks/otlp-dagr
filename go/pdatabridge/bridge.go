@@ -12,118 +12,10 @@
 package pdatabridge
 
 import (
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"otlptraces/dagr"
-	d "otlptraces/otlptracesdirect"
+	d "otlpgen/otlptracesdirect"
 )
-
-// Every field of a generated value struct is a dagr.Opt[T]: an absent field is not
-// written at all, which is how the Dagr side stays byte-comparable with protobuf's
-// proto3-default elision. These three helpers are the only place that decision lives.
-
-func some[T any](v T) dagr.Opt[T] { return dagr.Some(v) }
-
-func nonEmpty(v string) dagr.Opt[string] {
-	if v == "" {
-		return dagr.Opt[string]{}
-	}
-	return dagr.Some(v)
-}
-
-func nonZero(v uint64) dagr.Opt[uint64] {
-	if v == 0 {
-		return dagr.Opt[uint64]{}
-	}
-	return dagr.Some(v)
-}
-
-func nonZeroU32(v uint32) dagr.Opt[uint32] {
-	if v == 0 {
-		return dagr.Opt[uint32]{}
-	}
-	return dagr.Some(v)
-}
-
-func optSlice[T any](s []T) dagr.Opt[[]T] {
-	if len(s) == 0 {
-		return dagr.Opt[[]T]{}
-	}
-	return dagr.Some(s)
-}
-
-// ── encode: pdata -> Dagr bytes (direct builder, no arena) ───────────────────
-
-// attrValue converts one pdata attribute value, recursing through Slice and Map.
-//
-// The recursion is why `ArrayValue` and `KeyValueList` are collapsed out of the schema:
-// those two messages exist in the proto only because "oneof in AnyValue does not allow
-// repeated fields", and a Dagr union takes an array variant directly. So a nested value
-// maps straight onto `array_value` / `kvlist_value` with no wrapper node in between.
-//
-// The `false` return now means ONE thing — pcommon.ValueTypeEmpty, an attribute that is
-// present but holds no value. Callers turn that into an ABSENT Dagr field rather than
-// dropping the attribute, so an empty value survives the round trip as an empty value.
-func attrValue(v pcommon.Value) (d.AnyValueValue, bool) {
-	switch v.Type() {
-	case pcommon.ValueTypeStr:
-		return d.AnyValueStringValue(v.Str()), true
-	case pcommon.ValueTypeInt:
-		return d.AnyValueIntValue(v.Int()), true
-	case pcommon.ValueTypeDouble:
-		return d.AnyValueDoubleValue(v.Double()), true
-	case pcommon.ValueTypeBool:
-		return d.AnyValueBoolValue(v.Bool()), true
-	case pcommon.ValueTypeBytes:
-		return d.AnyValueBytesValue(v.Bytes().AsRaw()), true
-	case pcommon.ValueTypeSlice:
-		return d.AnyValueArrayValue(anyValueList(v.Slice())), true
-	case pcommon.ValueTypeMap:
-		return d.AnyValueKvlistValue(keyValues(v.Map())), true
-	default: // pcommon.ValueTypeEmpty
-		return d.AnyValueValue{}, false
-	}
-}
-
-// anyValueList converts a pdata Slice. The element type is an OPTIONAL union
-// (`dagr.Opt[AnyValueValue]`), so an empty element keeps its position instead of
-// collapsing the slice — which is the difference between `["a", , "c"]` and `["a", "c"]`.
-//
-// Nested values allocate, unlike the flat attribute path, and they have to: each level
-// hands the builder a slice it keeps a pointer into, so the storage cannot be scratch
-// that the next attribute overwrites. Scalar-only batches — which is nearly all OTLP
-// traffic, and all of the benchmark's — never reach here and stay allocation-free.
-func anyValueList(s pcommon.Slice) d.AnyValueList {
-	if s.Len() == 0 {
-		return nil
-	}
-	out := make(d.AnyValueList, 0, s.Len())
-	for i := 0; i < s.Len(); i++ {
-		if av, ok := attrValue(s.At(i)); ok {
-			out = append(out, dagr.Some(av))
-		} else {
-			out = append(out, dagr.Opt[d.AnyValueValue]{})
-		}
-	}
-	return out
-}
-
-func keyValues(m pcommon.Map) []d.KeyValue {
-	if m.Len() == 0 {
-		return nil
-	}
-	out := make([]d.KeyValue, 0, m.Len())
-	m.Range(func(k string, v pcommon.Value) bool {
-		kv := d.KeyValue{Key: nonEmpty(k)}
-		if av, ok := attrValue(v); ok {
-			kv.Value = some(av)
-		}
-		out = append(out, kv)
-		return true
-	})
-	return out
-}
 
 // ToBytes serializes td into an OTLP-on-Dagr buffer via the direct builder.
 func ToBytes(td ptrace.Traces) []byte {
@@ -165,15 +57,12 @@ func toValue(td ptrace.Traces) d.TracesData {
 	for i := 0; i < rss.Len(); i++ {
 		rs := rss.At(i)
 
-		res := d.Resource{Attributes: optSlice(keyValues(rs.Resource().Attributes()))}
+		res := resource(rs.Resource())
 		sss := rs.ScopeSpans()
 		outSS := make([]d.ScopeSpans, 0, sss.Len())
 		for j := 0; j < sss.Len(); j++ {
 			ss := sss.At(j)
-			sc := d.InstrumentationScope{
-				Name:    nonEmpty(ss.Scope().Name()),
-				Version: nonEmpty(ss.Scope().Version()),
-			}
+			sc := scope(ss.Scope())
 			sps := ss.Spans()
 			outSp := make([]d.Span, 0, sps.Len())
 			for k := 0; k < sps.Len(); k++ {

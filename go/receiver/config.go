@@ -1,4 +1,5 @@
-// Package dagrfilereceiver is an OpenTelemetry Collector traces receiver that reads an
+// Package dagrfilereceiver is an OpenTelemetry Collector receiver (traces, metrics, logs,
+// profiles) that reads an
 // OTLP-on-Dagr spool and feeds it into an ordinary pipeline.
 //
 // It exists so an UNMODIFIED collector can consume a spool, and that makes it the slow

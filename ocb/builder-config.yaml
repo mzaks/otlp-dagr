@@ -30,4 +30,4 @@ replaces:
   - otlpdagr => ${ROOT}/go
   # otlp-dagr's generated Go module. It is gitignored: `dagr build` (./regen.sh) writes
   # it from schema.py and the committed dagr.lock.json receipt.
-  - otlptraces => ${ROOT}/go/gen
+  - otlpgen => ${ROOT}/go/gen

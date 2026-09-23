@@ -67,7 +67,7 @@ func BenchmarkDecide(b *testing.B) {
 func decideViaPdata(r *spool.Reader, policy store.Policy) (int, error) {
 	byTrace := map[[16]byte]*store.Summary{}
 	err := r.Reverse(func(bt spool.Batch) bool {
-		td, err := pdatabridge.ToTraces(bt.Traces)
+		td, err := pdatabridge.ToTraces(bt.Payload)
 		if err != nil {
 			return false
 		}

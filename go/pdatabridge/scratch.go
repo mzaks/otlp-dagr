@@ -4,8 +4,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"otlptraces/dagr"
-	d "otlptraces/otlptracesdirect"
+	"otlpgen/dagr"
+	d "otlpgen/otlptracesdirect"
 )
 
 // Scratch builds the direct builder's value tree into storage it OWNS and REUSES, rather
@@ -134,9 +134,10 @@ func (s *Scratch) ToValueReuse(td ptrace.Traces) d.TracesData {
 			}
 			s.ss[s.nSS] = d.ScopeSpans{
 				Scope: some(d.InstrumentationScope{
-					Name:       nonEmpty(ssSrc.Scope().Name()),
-					Version:    nonEmpty(ssSrc.Scope().Version()),
-					Attributes: s.putAttrs(ssSrc.Scope().Attributes()),
+					Name:                   nonEmpty(ssSrc.Scope().Name()),
+					Version:                nonEmpty(ssSrc.Scope().Version()),
+					Attributes:             s.putAttrs(ssSrc.Scope().Attributes()),
+					DroppedAttributesCount: nonZeroU32(ssSrc.Scope().DroppedAttributesCount()),
 				}),
 				Spans:     optSlice(s.spans[spLo:s.nSpan]),
 				SchemaURL: nonEmpty(ssSrc.SchemaUrl()),
@@ -144,7 +145,10 @@ func (s *Scratch) ToValueReuse(td ptrace.Traces) d.TracesData {
 			s.nSS++
 		}
 		s.rs[s.nRS] = d.ResourceSpans{
-			Resource:   some(d.Resource{Attributes: s.putAttrs(src.Resource().Attributes())}),
+			Resource: some(d.Resource{
+				Attributes:             s.putAttrs(src.Resource().Attributes()),
+				DroppedAttributesCount: nonZeroU32(src.Resource().DroppedAttributesCount()),
+			}),
 			ScopeSpans: optSlice(s.ss[ssLo:s.nSS]),
 			SchemaURL:  nonEmpty(src.SchemaUrl()),
 		}

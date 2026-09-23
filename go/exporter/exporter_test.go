@@ -56,7 +56,7 @@ func TestExporterWritesTheBuilderOutputVerbatim(t *testing.T) {
 		t.Fatalf("shutdown: %v", err)
 	}
 
-	r, err := spool.Open(path)
+	r, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("open spool: %v", err)
 	}
@@ -65,10 +65,10 @@ func TestExporterWritesTheBuilderOutputVerbatim(t *testing.T) {
 		if i >= len(want) {
 			t.Fatalf("spool holds more than %d records", len(want))
 		}
-		if !bytes.Equal(b.Traces, want[i]) {
-			t.Fatalf("record %d: %d bytes on disk, %d from the builder", i, len(b.Traces), len(want[i]))
+		if !bytes.Equal(b.Payload, want[i]) {
+			t.Fatalf("record %d: %d bytes on disk, %d from the builder", i, len(b.Payload), len(want[i]))
 		}
-		if got, expect := b.SpanCount, uint32(batches[i].SpanCount()); got != expect {
+		if got, expect := b.Count, uint32(batches[i].SpanCount()); got != expect {
 			t.Fatalf("record %d: envelope says %d spans, batch has %d", i, got, expect)
 		}
 		i++
@@ -79,7 +79,7 @@ func TestExporterWritesTheBuilderOutputVerbatim(t *testing.T) {
 	if i != len(want) {
 		t.Fatalf("spool holds %d records, exported %d", i, len(want))
 	}
-	if rec, err := spool.CheckTail(r.Bytes()); err != nil || rec.Torn != 0 {
+	if rec, err := spool.CheckTail(r.Bytes(), spool.Traces); err != nil || rec.Torn != 0 {
 		t.Fatalf("exporter left a torn spool: %s (%v)", rec, err)
 	}
 }
@@ -155,13 +155,13 @@ func TestExporterResumeAcrossRestart(t *testing.T) {
 		}
 	}
 
-	r, err := spool.Open(path)
+	r, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	var counts []uint32
 	if err := r.Forward(func(b spool.Batch) bool {
-		counts = append(counts, b.SpanCount)
+		counts = append(counts, b.Count)
 		return true
 	}); err != nil {
 		t.Fatalf("forward: %v", err)
@@ -169,7 +169,7 @@ func TestExporterResumeAcrossRestart(t *testing.T) {
 	if want := []uint32{10, 11, 12}; len(counts) != 3 || counts[0] != want[0] || counts[2] != want[2] {
 		t.Fatalf("after three runs the spool holds %v, want %v", counts, want)
 	}
-	if n, err := spool.CountBackward(r.Bytes()); err != nil || n != 3 {
+	if n, err := spool.CountBackward(r.Bytes(), spool.Traces); err != nil || n != 3 {
 		t.Fatalf("reverse count %d (%v), want 3", n, err)
 	}
 }

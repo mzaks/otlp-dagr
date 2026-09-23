@@ -47,7 +47,7 @@ type RingOptions struct {
 // OpenRing opens or creates the ring at path, recovering a torn tail if the last process
 // was killed mid-write.
 func OpenRing(path string, opt RingOptions) (*Ring, spool.Recovery, error) {
-	w, rec, err := spool.Resume(path)
+	w, rec, err := spool.Resume(path, spool.Traces)
 	if err != nil {
 		return nil, rec, err
 	}
@@ -98,7 +98,7 @@ func (r *Ring) compactIfNeeded() error {
 	}
 	// Counting records needs the reverse walk, but only as far as the cap plus one —
 	// the moment one more record than the budget has been seen, the answer is known.
-	rd, err := spool.Open(r.path)
+	rd, err := spool.Open(r.path, spool.Traces)
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func (r *Ring) Compact() error {
 	if err := r.w.Close(); err != nil {
 		return err
 	}
-	rd, err := spool.Open(r.path)
+	rd, err := spool.Open(r.path, spool.Traces)
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func (r *Ring) Compact() error {
 		if r.opt.MaxBatches > 0 && len(keep) >= r.opt.MaxBatches {
 			return false
 		}
-		keep = append(keep, kept{b.ReceivedUnixNano, b.SpanCount, b.Traces})
+		keep = append(keep, kept{b.ReceivedUnixNano, b.Count, b.Payload})
 		bytes += size
 		return true
 	}); err != nil {
@@ -157,7 +157,7 @@ func (r *Ring) Compact() error {
 	r.lastWalked = walked
 
 	tmp := r.path + ".compact"
-	w, err := spool.Create(tmp)
+	w, err := spool.Create(tmp, spool.Traces)
 	if err != nil {
 		return err
 	}
@@ -191,7 +191,7 @@ func (r *Ring) Compact() error {
 
 	// Reopen for appending. The spool on disk is already framed, so this is the same
 	// resume path a restart takes.
-	nw, _, err := spool.Resume(r.path)
+	nw, _, err := spool.Resume(r.path, spool.Traces)
 	if err != nil {
 		return err
 	}

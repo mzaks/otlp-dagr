@@ -1,4 +1,5 @@
-// Package dagrfileexporter is an OpenTelemetry Collector traces exporter that writes
+// Package dagrfileexporter is an OpenTelemetry Collector exporter (traces, metrics, logs,
+// profiles) that writes
 // batches to an OTLP-on-Dagr spool: an append-only, doubly-linked DataSink file.
 //
 // The whole exporter is three steps — encode the batch with the direct builder, stamp an

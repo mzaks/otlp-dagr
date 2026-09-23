@@ -1,10 +1,22 @@
 """
-Dagr schema for otlp-dagr — OTLP traces as a Dagr DataGraph.
+Dagr schema for otlp-dagr — every OTLP signal as a Dagr DataGraph.
 
 Transpiled from the vendored `opentelemetry-proto` (proto/otlp/, Apache-2.0) by
-`dagr init --from-proto ... --node-style packed --root-message TracesData`.
+`dagr init --from-proto ... --node-style packed --root-message TracesData`, and the other
+three signals by the same importer (`MetricsData`, `LogsData`, `ProfilesData`).
 Regenerate the *code* with `./regen.sh`; this file is the committed source of truth
 and may be hand-edited (re-running the transpiler would overwrite it).
+
+SIGNALS: traces, metrics, logs and profiles (`v1development` — the proto says `Status:
+[Alpha]`, and pdata ships it as its own `pprofile` module, v0.x). The shared messages of
+`common.proto` and `resource.proto` live ONCE, in `OtlpCommon`, and each signal imports
+it — `spec/38` §2.5, and the D6 question of whether that split holds. The two targets
+this repo builds FLATTEN an import (Go: `dagr/codegen/go/graphs.py`; Rust: the same rule),
+so each signal's generated code carries its own copy of `KeyValue` / `Resource` / ...,
+and the Go target is built with `layout="package-per-graph"` so four copies do not meet
+in one Go package. The import buys one declaration in THIS file, not one type in the
+generated code — the wire is the same either way, since a packed field is addressed by
+its position and never by a type id.
 
 LAYOUT: every transpiled message is `packed`, deliberately — see
 `spec/38-otlp-on-dagr.md` §2.3 in the Dagr repo. `frozen`/`frozen+packed` is smaller
@@ -16,27 +28,39 @@ and it is visibly in motion: this very snapshot carries `Resource.entity_refs` (
 `common.Resource.schema_url` whose comment says it obsoletes the `schema_url` in
 ResourceSpans/ResourceMetrics/ResourceLogs. A frozen `Resource` or `KeyValue` would
 have been broken by each of those with no forward path for buffers already written.
+Profiles moves faster still (`stack_table` is `[Since v1.8.0]`).
 
 `packed` costs 3% of gzipped size and 1.8x of read speed against frozen+packed, and
 *gains* ~4% on encode (frozen writes presence bitsets). It still meets or beats
 protobuf on every dimension the benchmark measures: parity gzipped, 29.1x on a lazy
 sweep, 1.91x on encode via the direct builder.
 
-RAW (`spec/39`) is on exactly three fields: the two `Span` nanosecond timestamps and
-`Event.time_unix_nano`. `raw` is a claim about MAGNITUDE, not about protobuf's `fixed64`
-— a packed writer normally probes `LebLength(v) < width` per value, and `raw` says the
-probe can never succeed, so skip it. For u64 that threshold is 2^49, about 6.5 days
-after the epoch, so a wall-clock nanosecond timestamp clears it by a factor of ~3,000
-and the probe is pure branch (`spec/32` §1.55, ~2% of serialize).
+RAW (`spec/39`) is on the nanosecond wall-clock timestamps and nothing else. `raw` is a
+claim about MAGNITUDE, not about protobuf's `fixed64` — a packed writer normally probes
+`LebLength(v) < width` per value, and `raw` says the probe can never succeed, so skip it.
+For u64 that threshold is 2^49, about 6.5 days after the epoch, so a wall-clock
+nanosecond timestamp clears it by a factor of ~3,000 and the probe is pure branch
+(`spec/32` §1.55, ~2% of serialize).
 
-Note what is deliberately NOT raw, because the tempting rule is wrong: `Span.flags` and
-`Link.flags` are `fixed32` in the proto too, but they hold small values — for u32 the
-threshold is 2^21, and a flags word of 0x101 encodes as a 2-byte LEB. Marking those raw
-would make every set flags field 2 bytes LARGER. Protobuf's `fixed32` is a statement
-about the wire encoding its author chose; Dagr's `raw` is a statement about the values.
-They coincide for timestamps and ids, and diverge for flags and small counters.
+What is deliberately NOT raw, although the proto says `fixed`, because the tempting rule
+is wrong for each of them:
 
-A packed ROOT is also what makes the graph direct-buildable (`spec/33` §3), and packed
+  * `Span.flags`, `Link.flags`, `LogRecord.flags` (`fixed32`) — small values. For u32 the
+    threshold is 2^21, and a flags word of 0x101 encodes as a 2-byte LEB; raw would make
+    every set flags field 2 bytes LARGER.
+  * the metric `count`, `zero_count` and `bucket_counts` (`fixed64`) — counts, almost
+    always far below 2^49.
+  * `NumberValue.as_int` (`sfixed64`) — a gauge reading of any magnitude.
+  * `Mapping.memory_start` / `memory_limit` / `Location.address` (`uint64` in the proto,
+    listed because they LOOK like the case for raw) — user-space addresses on x86-64 and
+    arm64 sit around 2^46–2^47, below the 2^49 threshold, so the probe does win there.
+  * `Profile.duration_nano` — a duration, not a wall-clock time; a 10 s profile is 2^33.
+
+`start_time_unix_nano` IS raw even though a gauge often leaves it unset: raw only governs
+how a PRESENT value is written, and the bridge writes the field only when it is non-zero,
+exactly as protobuf elides a proto3 default.
+
+A packed ROOT is also what makes a graph direct-buildable (`spec/33` §3), and packed
 propagates downward — so any node we later mark `frozen=True` (our own envelope /
 index / header types, never a transpiled OTLP message) is promoted to frozen+packed in
 place, with the direct builder preserved.
@@ -55,18 +79,81 @@ from dagr.config import Library, Go, Rust  # Swift, TypeScript, Mojo, Odin, Pyth
 # inserted or reordered a case, silently, with no error and a changed wire value. OTLP's
 # enum numbers are fixed by the proto, so the schema states them.
 #
-# `capacity=255` on both is headroom, and it is free here: an enum's capacity only
+# `capacity=255` on every enum is headroom, and it is free here: an enum's capacity only
 # reaches the wire through its raw width (<= 255 is one byte, either way) and through
-# sub-byte packing in enum ARRAYS, of which this graph has none. Capacity cannot be
+# sub-byte packing in enum ARRAYS, of which these graphs have none. Capacity cannot be
 # changed compatibly later, so the choice is now or never — and OTLP has added span
-# kinds before. The same argument does NOT extend to the AnyValue union: a union's
-# capacity sets the bits per tag in union arrays (<= 16 -> 4 bits, <= 255 -> 8), so
-# raising it would cost half a byte per element in every `array_value`, forever, to buy
-# room for variants 17..255 that OTLP will not plausibly reach. It keeps its auto
-# capacity of 16 — eight variants used, eight spare.
+# kinds before. The same argument does NOT extend to the unions: a union's capacity sets
+# the bits per tag in union arrays (<= 16 -> 4 bits, <= 255 -> 8), so raising it would
+# cost half a byte per element in every `array_value`, forever, to buy room for variants
+# 17..255 that OTLP will not plausibly reach. They keep the auto capacity of 16.
+#
+# Two proto enums are NOT here: `DataPointFlags` and `LogRecordFlags`. Both are bit masks
+# for a `flags` field the proto itself types as a plain integer, so no field ever holds
+# one — the importer emits them because they are declared, not because they are used.
+
+
+# ── Shared: common.proto + resource.proto ─────────────────────────────────────
+#
+# No root: nothing serializes an `OtlpCommon` on its own. It exists to be imported.
+OtlpCommon = DataGraph(
+    'OtlpCommon',
+    node_types=[
+        # `message AnyValue { oneof value }` — collapsed to the union itself (no wrapper
+        # node), and so are ArrayValue and KeyValueList. Those two exist in the proto for
+        # one reason, which the proto says out loud: "We need KeyValueList as a message
+        # since `oneof` in AnyValue does not allow repeated fields." That is a protobuf
+        # limitation, not a shape in the data — a Dagr union takes an array variant
+        # directly. Collapsing them removes a node, an indirection and a length prefix
+        # per nested value, and loses nothing: an empty array is still representable,
+        # because the variant tag, not the payload, says which variant is present.
+        UnionType('AnyValue', types=[
+            ('string_value', t.utf8),
+            ('bool_value', t.bool),
+            ('int_value', t.i64),
+            ('double_value', t.f64),
+            # array_with_optionals, not array: `repeated AnyValue` can hold an element
+            # with no oneof set — pdata calls it ValueTypeEmpty — and a plain array has
+            # no way to say "absent". It does not drop the element, which would renumber
+            # the slice; it coerces it to the union's zero variant, so ["a", , "c"] comes
+            # back as ["a", "", "c"]. The nil bitset costs (count+7)/8 bytes per array
+            # and is the only way to round-trip the shape faithfully.
+            ('array_value', t.ref("AnyValue").array_with_optionals),
+            ('kvlist_value', t.ref("KeyValue").array),
+            ('bytes_value', t.data),
+            ('string_value_strindex', t.i32),
+        ]),
+        Node('KeyValue', fields=[
+            'key' >> t.utf8,
+            'value' >> t.ref("AnyValue"),
+            'key_strindex' >> t.i32,
+        ], packed=True),
+        Node('InstrumentationScope', fields=[
+            'name' >> t.utf8,
+            'version' >> t.utf8,
+            'attributes' >> t.ref("KeyValue").array,
+            'dropped_attributes_count' >> t.u32,
+        ], packed=True),
+        Node('EntityRef', fields=[
+            'schema_url' >> t.utf8,
+            'type' >> t.utf8,
+            'id_keys' >> t.utf8.array,
+            'description_keys' >> t.utf8.array,
+        ], packed=True),
+        Node('Resource', fields=[
+            'attributes' >> t.ref("KeyValue").array,
+            'dropped_attributes_count' >> t.u32,
+            'entity_refs' >> t.ref("EntityRef").array,
+        ], packed=True),
+    ],
+)
+
+
+# ── Traces: trace/v1/trace.proto ──────────────────────────────────────────────
 OtlpTraces = DataGraph(
     'OtlpTraces',
     root_type=t.ref('TracesData'),
+    imports=[ImportedGraph(OtlpCommon)],
     node_types=[
         Node('TracesData', fields=[
             'resource_spans' >> t.ref("ResourceSpans").array,
@@ -130,56 +217,321 @@ OtlpTraces = DataGraph(
             'message' >> t.utf8,
             'code' >> t.ref("StatusCode"),
         ], packed=True),
-        # `message AnyValue { oneof value }` — collapsed to the union itself (no wrapper
-        # node), and so are ArrayValue and KeyValueList. Those two exist in the proto for
-        # one reason, which the proto says out loud: "We need KeyValueList as a message
-        # since `oneof` in AnyValue does not allow repeated fields." That is a protobuf
-        # limitation, not a shape in the data — a Dagr union takes an array variant
-        # directly. Collapsing them removes a node, an indirection and a length prefix
-        # per nested value, and loses nothing: an empty array is still representable,
-        # because the variant tag, not the payload, says which variant is present.
-        UnionType('AnyValue', types=[
-            ('string_value', t.utf8),
-            ('bool_value', t.bool),
-            ('int_value', t.i64),
-            ('double_value', t.f64),
-            # array_with_optionals, not array: `repeated AnyValue` can hold an element
-            # with no oneof set — pdata calls it ValueTypeEmpty — and a plain array has
-            # no way to say "absent". It does not drop the element, which would renumber
-            # the slice; it coerces it to the union's zero variant, so ["a", , "c"] comes
-            # back as ["a", "", "c"]. The nil bitset costs (count+7)/8 bytes per array
-            # and is the only way to round-trip the shape faithfully.
-            ('array_value', t.ref("AnyValue").array_with_optionals),
-            ('kvlist_value', t.ref("KeyValue").array),
-            ('bytes_value', t.data),
-            ('string_value_strindex', t.i32),
-        ]),
-        Node('KeyValue', fields=[
-            'key' >> t.utf8,
-            'value' >> t.ref("AnyValue"),
-            'key_strindex' >> t.i32,
+    ],
+)
+
+
+# ── Metrics: metrics/v1/metrics.proto ─────────────────────────────────────────
+#
+# Renames against the transpile, all API-only (a packed field is addressed by position,
+# a union variant by index — no name reaches the wire):
+#   * `Metric.description` -> `description_text`: `description` is rejected for every
+#     target by `dagr/reserved_names.py` (Swift's CustomStringConvertible owns it), and
+#     the importer's `description_` fallback would surface as `Description_()` in Go.
+#   * the `Metric.data` oneof -> `MetricData`, not the importer's bare `Data`.
+#   * `NumberDataPoint.value` and `Exemplar.value` are the SAME oneof (`as_double = 4`,
+#     `as_int = 6`) declared twice; the importer named them `Value` and `ExemplarValue`.
+#     One union, `NumberValue`, serves both.
+OtlpMetrics = DataGraph(
+    'OtlpMetrics',
+    root_type=t.ref('MetricsData'),
+    imports=[ImportedGraph(OtlpCommon)],
+    node_types=[
+        Node('MetricsData', fields=[
+            'resource_metrics' >> t.ref("ResourceMetrics").array,
         ], packed=True),
-        Node('InstrumentationScope', fields=[
-            'name' >> t.utf8,
-            'version' >> t.utf8,
-            'attributes' >> t.ref("KeyValue").array,
-            'dropped_attributes_count' >> t.u32,
-        ], packed=True),
-        Node('EntityRef', fields=[
+        Node('ResourceMetrics', fields=[
+            'resource' >> t.ref("Resource"),
+            'scope_metrics' >> t.ref("ScopeMetrics").array,
             'schema_url' >> t.utf8,
-            'type' >> t.utf8,
-            'id_keys' >> t.utf8.array,
-            'description_keys' >> t.utf8.array,
         ], packed=True),
-        Node('Resource', fields=[
+        Node('ScopeMetrics', fields=[
+            'scope' >> t.ref("InstrumentationScope"),
+            'metrics' >> t.ref("Metric").array,
+            'schema_url' >> t.utf8,
+        ], packed=True),
+        Enum('AggregationTemporality', {
+            0: 'AGGREGATION_TEMPORALITY_UNSPECIFIED',
+            1: 'AGGREGATION_TEMPORALITY_DELTA',
+            2: 'AGGREGATION_TEMPORALITY_CUMULATIVE',
+        }, capacity=255),
+        UnionType('MetricData', types=[
+            ('gauge', t.ref("Gauge")),
+            ('sum', t.ref("Sum")),
+            ('histogram', t.ref("Histogram")),
+            ('exponential_histogram', t.ref("ExponentialHistogram")),
+            ('summary', t.ref("Summary")),
+        ]),
+        Node('Metric', fields=[
+            'name' >> t.utf8,
+            'description_text' >> t.utf8,
+            'unit' >> t.utf8,
+            'metadata' >> t.ref("KeyValue").array,
+            'data' >> t.ref('MetricData'),
+        ], packed=True),
+        Node('Gauge', fields=[
+            'data_points' >> t.ref("NumberDataPoint").array,
+        ], packed=True),
+        Node('Sum', fields=[
+            'data_points' >> t.ref("NumberDataPoint").array,
+            'aggregation_temporality' >> t.ref("AggregationTemporality"),
+            'is_monotonic' >> t.bool,
+        ], packed=True),
+        Node('Histogram', fields=[
+            'data_points' >> t.ref("HistogramDataPoint").array,
+            'aggregation_temporality' >> t.ref("AggregationTemporality"),
+        ], packed=True),
+        Node('ExponentialHistogram', fields=[
+            'data_points' >> t.ref("ExponentialHistogramDataPoint").array,
+            'aggregation_temporality' >> t.ref("AggregationTemporality"),
+        ], packed=True),
+        Node('Summary', fields=[
+            'data_points' >> t.ref("SummaryDataPoint").array,
+        ], packed=True),
+        UnionType('NumberValue', types=[
+            ('as_double', t.f64),
+            ('as_int', t.i64),
+        ]),
+        Node('NumberDataPoint', fields=[
             'attributes' >> t.ref("KeyValue").array,
-            'dropped_attributes_count' >> t.u32,
-            'entity_refs' >> t.ref("EntityRef").array,
+            'start_time_unix_nano' >> t.u64 >> raw,
+            'time_unix_nano' >> t.u64 >> raw,
+            'exemplars' >> t.ref("Exemplar").array,
+            'flags' >> t.u32,
+            'value' >> t.ref('NumberValue'),
+        ], packed=True),
+        # `sum`, `min`, `max` are proto3 `optional double`: presence is part of the data
+        # (a histogram of negative observations has no meaningful sum). A Dagr field is
+        # optional by default and absence is the missing field, so the bridge writes them
+        # exactly when pdata's HasSum/HasMin/HasMax is true — 0.0 stays representable.
+        Node('HistogramDataPoint', fields=[
+            'attributes' >> t.ref("KeyValue").array,
+            'start_time_unix_nano' >> t.u64 >> raw,
+            'time_unix_nano' >> t.u64 >> raw,
+            'count' >> t.u64,
+            'sum' >> t.f64,
+            'bucket_counts' >> t.u64.array,
+            'explicit_bounds' >> t.f64.array,
+            'exemplars' >> t.ref("Exemplar").array,
+            'flags' >> t.u32,
+            'min' >> t.f64,
+            'max' >> t.f64,
+        ], packed=True),
+        Node('Buckets', fields=[
+            'offset' >> t.i32,
+            'bucket_counts' >> t.u64.array,
+        ], packed=True),
+        Node('ExponentialHistogramDataPoint', fields=[
+            'attributes' >> t.ref("KeyValue").array,
+            'start_time_unix_nano' >> t.u64 >> raw,
+            'time_unix_nano' >> t.u64 >> raw,
+            'count' >> t.u64,
+            'sum' >> t.f64,
+            'scale' >> t.i32,
+            'zero_count' >> t.u64,
+            'positive' >> t.ref("Buckets"),
+            'negative' >> t.ref("Buckets"),
+            'flags' >> t.u32,
+            'exemplars' >> t.ref("Exemplar").array,
+            'min' >> t.f64,
+            'max' >> t.f64,
+            'zero_threshold' >> t.f64,
+        ], packed=True),
+        Node('ValueAtQuantile', fields=[
+            'quantile' >> t.f64,
+            'value' >> t.f64,
+        ], packed=True),
+        Node('SummaryDataPoint', fields=[
+            'attributes' >> t.ref("KeyValue").array,
+            'start_time_unix_nano' >> t.u64 >> raw,
+            'time_unix_nano' >> t.u64 >> raw,
+            'count' >> t.u64,
+            'sum' >> t.f64,
+            'quantile_values' >> t.ref("ValueAtQuantile").array,
+            'flags' >> t.u32,
+        ], packed=True),
+        Node('Exemplar', fields=[
+            'filtered_attributes' >> t.ref("KeyValue").array,
+            'time_unix_nano' >> t.u64 >> raw,
+            'span_id' >> t.data,
+            'trace_id' >> t.data,
+            'value' >> t.ref('NumberValue'),
         ], packed=True),
     ],
 )
 
-# ── The spool: an append-only, doubly-linked DataSink of OTLP batches ─────────
+
+# ── Logs: logs/v1/logs.proto ──────────────────────────────────────────────────
+OtlpLogs = DataGraph(
+    'OtlpLogs',
+    root_type=t.ref('LogsData'),
+    imports=[ImportedGraph(OtlpCommon)],
+    node_types=[
+        Node('LogsData', fields=[
+            'resource_logs' >> t.ref("ResourceLogs").array,
+        ], packed=True),
+        Node('ResourceLogs', fields=[
+            'resource' >> t.ref("Resource"),
+            'scope_logs' >> t.ref("ScopeLogs").array,
+            'schema_url' >> t.utf8,
+        ], packed=True),
+        Node('ScopeLogs', fields=[
+            'scope' >> t.ref("InstrumentationScope"),
+            'log_records' >> t.ref("LogRecord").array,
+            'schema_url' >> t.utf8,
+        ], packed=True),
+        Enum('SeverityNumber', {
+            0: 'SEVERITY_NUMBER_UNSPECIFIED',
+            1: 'SEVERITY_NUMBER_TRACE',
+            2: 'SEVERITY_NUMBER_TRACE2',
+            3: 'SEVERITY_NUMBER_TRACE3',
+            4: 'SEVERITY_NUMBER_TRACE4',
+            5: 'SEVERITY_NUMBER_DEBUG',
+            6: 'SEVERITY_NUMBER_DEBUG2',
+            7: 'SEVERITY_NUMBER_DEBUG3',
+            8: 'SEVERITY_NUMBER_DEBUG4',
+            9: 'SEVERITY_NUMBER_INFO',
+            10: 'SEVERITY_NUMBER_INFO2',
+            11: 'SEVERITY_NUMBER_INFO3',
+            12: 'SEVERITY_NUMBER_INFO4',
+            13: 'SEVERITY_NUMBER_WARN',
+            14: 'SEVERITY_NUMBER_WARN2',
+            15: 'SEVERITY_NUMBER_WARN3',
+            16: 'SEVERITY_NUMBER_WARN4',
+            17: 'SEVERITY_NUMBER_ERROR',
+            18: 'SEVERITY_NUMBER_ERROR2',
+            19: 'SEVERITY_NUMBER_ERROR3',
+            20: 'SEVERITY_NUMBER_ERROR4',
+            21: 'SEVERITY_NUMBER_FATAL',
+            22: 'SEVERITY_NUMBER_FATAL2',
+            23: 'SEVERITY_NUMBER_FATAL3',
+            24: 'SEVERITY_NUMBER_FATAL4',
+        }, capacity=255),
+        Node('LogRecord', fields=[
+            'time_unix_nano' >> t.u64 >> raw,
+            'observed_time_unix_nano' >> t.u64 >> raw,
+            'severity_number' >> t.ref("SeverityNumber"),
+            'severity_text' >> t.utf8,
+            'body' >> t.ref("AnyValue"),
+            'attributes' >> t.ref("KeyValue").array,
+            'dropped_attributes_count' >> t.u32,
+            'flags' >> t.u32,
+            'trace_id' >> t.data,
+            'span_id' >> t.data,
+            'event_name' >> t.utf8,
+        ], packed=True),
+    ],
+)
+
+
+# ── Profiles: profiles/v1development/profiles.proto ───────────────────────────
+#
+# FAITHFUL to the proto: every cross-reference is an integer index into a
+# `ProfilesDictionary` table (`*_index`, `*_strindex`, `attribute_indices`), and each
+# table's entry 0 is the mandatory zero value. That is protobuf's way of expressing
+# sharing without references — exactly what a Dagr graph expresses natively with node
+# refs and dedup. Keeping the indices makes the pprofile bridge a straight copy and keeps
+# this graph comparable with protobuf byte for byte; a graph-native variant (refs instead
+# of indices, no string table) is the obvious follow-up to measure against it, not a
+# replacement for it (`spec/38` §2.6).
+#
+# `Link` here is the profiles Link (trace_id + span_id only), not the traces one. The two
+# never meet: each signal is its own graph, and its own Go package.
+OtlpProfiles = DataGraph(
+    'OtlpProfiles',
+    root_type=t.ref('ProfilesData'),
+    imports=[ImportedGraph(OtlpCommon)],
+    node_types=[
+        Node('ProfilesDictionary', fields=[
+            'mapping_table' >> t.ref("Mapping").array,
+            'location_table' >> t.ref("Location").array,
+            'function_table' >> t.ref("Function").array,
+            'link_table' >> t.ref("Link").array,
+            'string_table' >> t.utf8.array,
+            'attribute_table' >> t.ref("KeyValueAndUnit").array,
+            'stack_table' >> t.ref("Stack").array,
+        ], packed=True),
+        Node('ProfilesData', fields=[
+            'resource_profiles' >> t.ref("ResourceProfiles").array,
+            'dictionary' >> t.ref("ProfilesDictionary"),
+        ], packed=True),
+        Node('ResourceProfiles', fields=[
+            'resource' >> t.ref("Resource"),
+            'scope_profiles' >> t.ref("ScopeProfiles").array,
+            'schema_url' >> t.utf8,
+        ], packed=True),
+        Node('ScopeProfiles', fields=[
+            'scope' >> t.ref("InstrumentationScope"),
+            'profiles' >> t.ref("Profile").array,
+            'schema_url' >> t.utf8,
+        ], packed=True),
+        Node('Profile', fields=[
+            'sample_type' >> t.ref("ValueType"),
+            'samples' >> t.ref("Sample").array,
+            'time_unix_nano' >> t.u64 >> raw,
+            'duration_nano' >> t.u64,
+            'period_type' >> t.ref("ValueType"),
+            'period' >> t.i64,
+            'profile_id' >> t.data,
+            'dropped_attributes_count' >> t.u32,
+            'original_payload_format' >> t.utf8,
+            'original_payload' >> t.data,
+            'attribute_indices' >> t.i32.array,
+        ], packed=True),
+        Node('Link', fields=[
+            'trace_id' >> t.data,
+            'span_id' >> t.data,
+        ], packed=True),
+        Node('ValueType', fields=[
+            'type_strindex' >> t.i32,
+            'unit_strindex' >> t.i32,
+        ], packed=True),
+        Node('Sample', fields=[
+            'stack_index' >> t.i32,
+            'attribute_indices' >> t.i32.array,
+            'link_index' >> t.i32,
+            'values' >> t.i64.array,
+            # raw on an int ARRAY is encoding tag 1 (fixed width, O(1) index): every
+            # element is a wall-clock nanosecond timestamp, so LEB never wins.
+            'timestamps_unix_nano' >> t.u64.array >> raw,
+        ], packed=True),
+        Node('Mapping', fields=[
+            'memory_start' >> t.u64,
+            'memory_limit' >> t.u64,
+            'file_offset' >> t.u64,
+            'filename_strindex' >> t.i32,
+            'attribute_indices' >> t.i32.array,
+        ], packed=True),
+        Node('Stack', fields=[
+            'location_indices' >> t.i32.array,
+        ], packed=True),
+        Node('Location', fields=[
+            'mapping_index' >> t.i32,
+            'address' >> t.u64,
+            'lines' >> t.ref("Line").array,
+            'attribute_indices' >> t.i32.array,
+        ], packed=True),
+        Node('Line', fields=[
+            'function_index' >> t.i32,
+            'line' >> t.i64,
+            'column' >> t.i64,
+        ], packed=True),
+        Node('Function', fields=[
+            'name_strindex' >> t.i32,
+            'system_name_strindex' >> t.i32,
+            'filename_strindex' >> t.i32,
+            'start_line' >> t.i64,
+        ], packed=True),
+        Node('KeyValueAndUnit', fields=[
+            'key_strindex' >> t.i32,
+            'value' >> t.ref("AnyValue"),
+            'unit_strindex' >> t.i32,
+        ], packed=True),
+    ],
+)
+
+
+# ── The spools: one append-only, doubly-linked DataSink per signal ────────────
 #
 # `spec/11` §11: with `doubly_linked=True` every record also stores its byte span as a
 # reverse-delimited LEB at the record's END, so a reader can walk newest-first from EOF
@@ -188,22 +540,28 @@ OtlpTraces = DataGraph(
 # multi-GB spool forward, and a half-written tail is detectable rather than silently
 # truncating the stream (`spec/38` §6.1).
 #
-# The batch is carried as a `raw` EMBEDDED GRAPH (`spec/18` §11), not as a flattened span
+# The batch is carried as a `raw` EMBEDDED GRAPH (`spec/18` §11), not as a flattened
 # record.  A `raw` sink field must target an ImportedType — a node from an external
 # DataGraph, never a sink-local node — because the leaf must be serialized in the target
 # graph's OWN format (cycles, dedup, alignment), which only a real graph has.  The
 # consequences are exactly what an exporter/receiver pair wants:
 #
 #   * the exporter's job is "frame and append" — the bytes the direct builder produced are
-#     stored verbatim, so exporter output is byte-identical to `StreamBuilder` output;
+#     stored verbatim, so exporter output is byte-identical to the builder's output;
 #   * the receiver gets the blob back as a sub-slice of the mapped file, so forwarding a
 #     batch untouched costs no copy and no decode (`spec/38` §5.2);
 #   * the leaf is a genuine standalone Dagr buffer — it pops back out and reads through
-#     OtlpTraces' normal readers, including `dagr graph-explorer`.
+#     its graph's normal readers, including `dagr graph-explorer`.
 #
-# `received_unix_nano` and `span_count` are the sink's OWN fields, and they are the whole
-# point of the envelope: a reverse reader answers "the last N batches, m spans" by reading
-# two packed scalars per record and never opening the blob at all.
+# `received_unix_nano` and the item count are each sink's OWN fields, and they are the
+# whole point of the envelope: a reverse reader answers "the last N batches, m items" by
+# reading two packed scalars per record and never opening the blob at all.
+#
+# ONE SPOOL PER SIGNAL, not one spool with a record type per signal: a collector exporter
+# is per signal type, so is the queue behind it, and `SpanLog` stays byte-identical to
+# the spools written before metrics/logs/profiles existed. The count is the unit each
+# signal's pdata counts in (`SpanCount`, `DataPointCount`, `LogRecordCount`,
+# `SampleCount`).
 SpanLog = DataSink(
     'SpanLog',
     imports=[ImportedGraph(OtlpTraces)],
@@ -217,14 +575,59 @@ SpanLog = DataSink(
     ],
 )
 
+MetricLog = DataSink(
+    'MetricLog',
+    imports=[ImportedGraph(OtlpMetrics)],
+    doubly_linked=True,
+    node_types=[
+        Node('Batch', fields=[
+            'received_unix_nano' >> t.u64 >> required,
+            'data_point_count' >> t.u32 >> required,
+            'metrics' >> t.ref("MetricsData") >> raw >> required,
+        ]),
+    ],
+)
+
+LogRecordLog = DataSink(
+    'LogRecordLog',
+    imports=[ImportedGraph(OtlpLogs)],
+    doubly_linked=True,
+    node_types=[
+        Node('Batch', fields=[
+            'received_unix_nano' >> t.u64 >> required,
+            'log_record_count' >> t.u32 >> required,
+            'logs' >> t.ref("LogsData") >> raw >> required,
+        ]),
+    ],
+)
+
+ProfileLog = DataSink(
+    'ProfileLog',
+    imports=[ImportedGraph(OtlpProfiles)],
+    doubly_linked=True,
+    node_types=[
+        Node('Batch', fields=[
+            'received_unix_nano' >> t.u64 >> required,
+            'sample_count' >> t.u32 >> required,
+            'profiles' >> t.ref("ProfilesData") >> raw >> required,
+        ]),
+    ],
+)
+
 
 library = Library(
     'otlp_dagr',
-    schemas=[OtlpTraces, SpanLog],
+    # OtlpCommon is NOT listed: it has no root and is never serialized on its own — each
+    # signal reaches it through its import.
+    schemas=[OtlpTraces, OtlpMetrics, OtlpLogs, OtlpProfiles,
+             SpanLog, MetricLog, LogRecordLog, ProfileLog],
     targets=[
         # The Go emitter always writes the lazy accessors, the arena, the serializer
         # and the direct builder (spec/37 §16) — there is no feature list to opt into.
-        Go(out="go/gen", package="otlptraces"),
+        # `package-per-graph`: each signal is its own Go package (`otlpgen/otlptraces`,
+        # `otlpgen/otlpmetrics`, ...), because each carries its own flattened copy of
+        # OtlpCommon and profiles has a `Link` of its own.
+        Go(out="go/gen", package="otlpgen", layout="package-per-graph"),
         # The Rust crate carries the lazy reader and spec/19's lazy Arrow producer
         # (`arrow` implies `lazy`): one normalised table per node type, and `AnyValue` —
         # a recursive union Arrow cannot inline — as its own table keyed by a surrogate

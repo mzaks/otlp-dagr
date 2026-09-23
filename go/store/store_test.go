@@ -14,7 +14,7 @@ import (
 func writeSpool(t testing.TB, sizes ...int) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "spans.dagr")
-	w, err := spool.Create(path)
+	w, err := spool.Create(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestRingKeepsNewestBatches(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	rd, err := spool.Open(path)
+	rd, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("open spool: %v", err)
 	}
@@ -258,10 +258,10 @@ func TestRingKeepsNewestBatches(t *testing.T) {
 			t.Fatalf("ring holds %v, want %v", stamps, want)
 		}
 	}
-	if n, err := spool.CountBackward(rd.Bytes()); err != nil || n != 4 {
+	if n, err := spool.CountBackward(rd.Bytes(), spool.Traces); err != nil || n != 4 {
 		t.Fatalf("reverse chain has %d records (%v), want 4", n, err)
 	}
-	if tail, err := spool.CheckTail(rd.Bytes()); err != nil || tail.Torn != 0 {
+	if tail, err := spool.CheckTail(rd.Bytes(), spool.Traces); err != nil || tail.Torn != 0 {
 		t.Fatalf("compaction left a torn spool: %s (%v)", tail, err)
 	}
 
@@ -297,7 +297,7 @@ func TestRingKeepsWholeRecordsUnderAByteBudget(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	rd, err := spool.Open(path)
+	rd, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestRingKeepsWholeRecordsUnderAByteBudget(t *testing.T) {
 	if n == 0 {
 		t.Fatal("the ring kept nothing")
 	}
-	if tail, err := spool.CheckTail(rd.Bytes()); err != nil || tail.Torn != 0 {
+	if tail, err := spool.CheckTail(rd.Bytes(), spool.Traces); err != nil || tail.Torn != 0 {
 		t.Fatalf("byte-budget compaction left a torn spool: %s (%v)", tail, err)
 	}
 }

@@ -20,7 +20,7 @@ package store
 import (
 	"fmt"
 
-	g "otlptraces"
+	g "otlpgen/otlptraces"
 
 	"otlpdagr/spool"
 )
@@ -72,7 +72,7 @@ type Query struct {
 
 // Open reads the spool at path.
 func Open(path string) (*Query, error) {
-	r, err := spool.Open(path)
+	r, err := spool.Open(path, spool.Traces)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (q *Query) Scan(fn func(Span) bool) error { return q.walkBack(Window{}, fn)
 // SpanCount totals the spool's spans from the envelopes alone — no batch is opened.
 func (q *Query) SpanCount() (spans int, batches int, err error) {
 	err = q.r.Reverse(func(b spool.Batch) bool {
-		spans += int(b.SpanCount)
+		spans += int(b.Count)
 		batches++
 		return true
 	})
@@ -147,7 +147,7 @@ func (q *Query) walkBack(w Window, fn func(Span) bool) error {
 			return false
 		}
 		q.stats.RecordsWalked++
-		spans, err := q.fill(b.Traces)
+		spans, err := q.fill(b.Payload)
 		if err != nil {
 			walkErr = err
 			return false

@@ -4,6 +4,11 @@
 //	otlpdagrctl send   -endpoint URL -spans N      send one batch over OTLP/HTTP
 //	otlpdagrctl spool  -path FILE [-spans N]       report and CHECK a spool
 //	otlpdagrctl verify -path FILE -spans N         compare a file-exporter dump to the sent batch
+//
+// `-signal metrics|logs|profiles` switches send / spool / verify to that signal; send
+// then posts the signal's WIDE fixture (every field set) to its OTLP/HTTP path, and
+// verify compares every dumped request with it as marshalled protobuf. Traces keeps the
+// benchmark batch and the per-span digest.
 package main
 
 import (
@@ -18,6 +23,12 @@ import (
 	"sort"
 	"time"
 
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
+	"go.opentelemetry.io/collector/pdata/pprofile"
+	"go.opentelemetry.io/collector/pdata/pprofile/pprofileotlp"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 
@@ -55,11 +66,36 @@ func fail(err error) {
 // number in the README was measured on.
 func send(args []string) error {
 	fs := flag.NewFlagSet("send", flag.ExitOnError)
-	endpoint := fs.String("endpoint", "http://127.0.0.1:4318/v1/traces", "OTLP/HTTP traces endpoint")
-	spans := fs.Int("spans", 500, "spans per batch")
+	sigName := fs.String("signal", "traces", "traces | metrics | logs | profiles")
+	base := fs.String("base", "http://127.0.0.1:4318", "OTLP/HTTP base URL")
+	endpoint := fs.String("endpoint", "", "full endpoint (default: base + the signal's path)")
+	spans := fs.Int("spans", 500, "spans per batch (traces)")
 	batches := fs.Int("batches", 1, "how many batches to send")
 	retry := fs.Duration("retry", 20*time.Second, "keep retrying until the collector is up")
 	_ = fs.Parse(args)
+	sig, err := parseSignal(*sigName)
+	if err != nil {
+		return err
+	}
+	if sig != spool.Traces {
+		body, path, err := wideRequest(sig)
+		if err != nil {
+			return err
+		}
+		if *endpoint == "" {
+			*endpoint = *base + path
+		}
+		for i := 0; i < *batches; i++ {
+			if err := post(*endpoint, body, *retry); err != nil {
+				return err
+			}
+		}
+		fmt.Printf("sent %d wide %s batches to %s\n", *batches, sig, *endpoint)
+		return nil
+	}
+	if *endpoint == "" {
+		*endpoint = *base + "/v1/traces"
+	}
 
 	body, err := ptraceotlp.NewExportRequestFromTraces(fixture.TracesN(*spans)).MarshalProto()
 	if err != nil {
@@ -100,6 +136,7 @@ func post(endpoint string, body []byte, retry time.Duration) error {
 // forward one, and the tail is intact.
 func checkSpool(args []string) error {
 	fs := flag.NewFlagSet("spool", flag.ExitOnError)
+	sigName := fs.String("signal", "traces", "traces | metrics | logs | profiles")
 	path := fs.String("path", "", "spool file")
 	spans := fs.Int("spans", 0, "expected total spans (0 = do not check)")
 	batches := fs.Int("batches", 0, "expected batch count (0 = do not check)")
@@ -107,15 +144,19 @@ func checkSpool(args []string) error {
 	if *path == "" {
 		return errors.New("spool: -path is required")
 	}
+	sig, err := parseSignal(*sigName)
+	if err != nil {
+		return err
+	}
 
-	r, err := spool.Open(*path)
+	r, err := spool.Open(*path, sig)
 	if err != nil {
 		return err
 	}
 
 	// The tail first: a spool left by a killed exporter can end mid-record, and every
 	// count taken before that is known would be a count of an unknown prefix.
-	tail, err := spool.CheckTail(r.Bytes())
+	tail, err := spool.CheckTail(r.Bytes(), sig)
 	if err != nil {
 		return err
 	}
@@ -126,7 +167,7 @@ func checkSpool(args []string) error {
 	fwdBatches, fwdSpans := 0, 0
 	if err := r.Forward(func(b spool.Batch) bool {
 		fwdBatches++
-		fwdSpans += int(b.SpanCount)
+		fwdSpans += int(b.Count)
 		return true
 	}); err != nil {
 		return err
@@ -137,7 +178,7 @@ func checkSpool(args []string) error {
 	revBatches, revSpans := 0, 0
 	if err := r.Reverse(func(b spool.Batch) bool {
 		revBatches++
-		revSpans += int(b.SpanCount)
+		revSpans += int(b.Count)
 		return true
 	}); err != nil {
 		return err
@@ -146,7 +187,7 @@ func checkSpool(args []string) error {
 		return fmt.Errorf("reverse walk saw %d batches / %d spans, forward saw %d / %d",
 			revBatches, revSpans, fwdBatches, fwdSpans)
 	}
-	chained, err := spool.CountBackward(r.Bytes())
+	chained, err := spool.CountBackward(r.Bytes(), sig)
 	if err != nil {
 		return fmt.Errorf("reverse chain broken after %d records: %w", chained, err)
 	}
@@ -154,16 +195,16 @@ func checkSpool(args []string) error {
 		return fmt.Errorf("validated reverse chain has %d records, forward has %d", chained, fwdBatches)
 	}
 
-	newest, newestSpans, err := r.LastSpans(1)
+	newest, newestSpans, err := r.LastItems(1)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("spool %s: %d bytes, %d batches, %d spans, %s\n",
-		*path, len(r.Bytes()), fwdBatches, fwdSpans, tail)
+	fmt.Printf("%s spool %s: %d bytes, %d batches, %d items, %s\n",
+		sig, *path, len(r.Bytes()), fwdBatches, fwdSpans, tail)
 	if len(newest) > 0 {
-		fmt.Printf("  newest batch: %d spans, received %s, %d embedded bytes\n",
+		fmt.Printf("  newest batch: %d items, received %s, %d embedded bytes\n",
 			newestSpans, time.Unix(0, int64(newest[0].ReceivedUnixNano)).Format(time.RFC3339Nano),
-			len(newest[0].Traces))
+			len(newest[0].Payload))
 	}
 	if *batches != 0 && fwdBatches != *batches {
 		return fmt.Errorf("spool holds %d batches, expected %d", fwdBatches, *batches)
@@ -179,12 +220,20 @@ func checkSpool(args []string) error {
 // batch that was sent in.
 func verify(args []string) error {
 	fs := flag.NewFlagSet("verify", flag.ExitOnError)
+	sigName := fs.String("signal", "traces", "traces | metrics | logs | profiles")
 	path := fs.String("path", "", "file exporter output (OTLP JSON, one request per line)")
 	spans := fs.Int("spans", 500, "spans per batch that was sent")
 	batches := fs.Int("batches", 1, "how many batches were sent")
 	_ = fs.Parse(args)
 	if *path == "" {
 		return errors.New("verify: -path is required")
+	}
+	sig, err := parseSignal(*sigName)
+	if err != nil {
+		return err
+	}
+	if sig != spool.Traces {
+		return verifyWide(sig, *path, *batches)
 	}
 
 	f, err := os.Open(*path)
@@ -260,4 +309,108 @@ func digest(td ptrace.Traces) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func parseSignal(name string) (spool.Signal, error) {
+	for _, s := range []spool.Signal{spool.Traces, spool.Metrics, spool.Logs, spool.Profiles} {
+		if s.String() == name {
+			return s, nil
+		}
+	}
+	return 0, fmt.Errorf("unknown signal %q", name)
+}
+
+// wideRequest is the OTLP/HTTP body for a signal's wide fixture, and its URL path.
+func wideRequest(sig spool.Signal) ([]byte, string, error) {
+	switch sig {
+	case spool.Metrics:
+		b, err := pmetricotlp.NewExportRequestFromMetrics(fixture.MetricsWide()).MarshalProto()
+		return b, "/v1/metrics", err
+	case spool.Logs:
+		b, err := plogotlp.NewExportRequestFromLogs(fixture.LogsWide()).MarshalProto()
+		return b, "/v1/logs", err
+	case spool.Profiles:
+		b, err := pprofileotlp.NewExportRequestFromProfiles(fixture.ProfilesWide()).MarshalProto()
+		return b, "/v1development/profiles", err
+	}
+	return nil, "", fmt.Errorf("no wide request for %s", sig)
+}
+
+// wideProto is the fixture as marshalled protobuf — the comparison form. Built fresh on
+// every call: pprofile's marshaler mutates the batch it is handed.
+func wideProto(sig spool.Signal) ([]byte, error) {
+	switch sig {
+	case spool.Metrics:
+		return (&pmetric.ProtoMarshaler{}).MarshalMetrics(fixture.MetricsWide())
+	case spool.Logs:
+		return (&plog.ProtoMarshaler{}).MarshalLogs(fixture.LogsWide())
+	case spool.Profiles:
+		return (&pprofile.ProtoMarshaler{}).MarshalProfiles(fixture.ProfilesWide())
+	}
+	return nil, fmt.Errorf("no wide fixture for %s", sig)
+}
+
+// jsonLineToProto parses one file-exporter line (an OTLP/JSON export request) and
+// re-marshals its payload as protobuf.
+func jsonLineToProto(sig spool.Signal, line []byte) ([]byte, error) {
+	switch sig {
+	case spool.Metrics:
+		req := pmetricotlp.NewExportRequest()
+		if err := req.UnmarshalJSON(line); err != nil {
+			return nil, err
+		}
+		return (&pmetric.ProtoMarshaler{}).MarshalMetrics(req.Metrics())
+	case spool.Logs:
+		req := plogotlp.NewExportRequest()
+		if err := req.UnmarshalJSON(line); err != nil {
+			return nil, err
+		}
+		return (&plog.ProtoMarshaler{}).MarshalLogs(req.Logs())
+	case spool.Profiles:
+		req := pprofileotlp.NewExportRequest()
+		if err := req.UnmarshalJSON(line); err != nil {
+			return nil, err
+		}
+		return (&pprofile.ProtoMarshaler{}).MarshalProfiles(req.Profiles())
+	}
+	return nil, fmt.Errorf("no JSON form for %s", sig)
+}
+
+// verifyWide checks that every request the far end of the pipeline wrote is the wide
+// fixture that went in — OTLP in, Dagr spool, dagrfile receiver, file exporter out.
+func verifyWide(sig spool.Signal, path string, batches int) error {
+	want, err := wideProto(sig)
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 1<<20), 1<<28)
+	n := 0
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		got, err := jsonLineToProto(sig, line)
+		if err != nil {
+			return fmt.Errorf("parsing %s: %w", path, err)
+		}
+		if !bytes.Equal(got, want) {
+			return fmt.Errorf("%s request %d differs from the batch that was sent", sig, n)
+		}
+		n++
+	}
+	if err := sc.Err(); err != nil {
+		return err
+	}
+	if n != batches {
+		return fmt.Errorf("%d %s requests came out, %d went in", n, sig, batches)
+	}
+	fmt.Printf("verified %d wide %s batches through the collector round trip\n", n, sig)
+	return nil
 }

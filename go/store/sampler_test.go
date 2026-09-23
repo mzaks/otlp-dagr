@@ -15,7 +15,7 @@ func writeSampling(t testing.TB, nTraces, nBatches int) (string, *fixture.Sampli
 	t.Helper()
 	c := fixture.NewSampling(nTraces, nBatches)
 	path := filepath.Join(t.TempDir(), "sampling.dagr")
-	w, err := spool.Create(path)
+	w, err := spool.Create(path, spool.Traces)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
