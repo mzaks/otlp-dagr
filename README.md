@@ -562,6 +562,27 @@ attributes and the resource's dropped count, which the seed never sets. Exempt a
 three fields pdata v1.67 cannot express: `Resource.entity_refs`, `KeyValue.key_strindex`,
 `AnyValue.string_value_strindex`.
 
+**Profiles as a graph — measured, and it loses.** `OtlpProfilesGraph` replaces every
+dictionary index with a node reference (shared entries stored once, no string table;
+`go/profilegraphbridge`, `go test ./bench -run TestProfilesGraphSizes -v`):
+
+```
+            size      size.gz  | encode    to pdata  | shallow sweep   deep read (stack -> fn names)
+proto       93,407    28,997   | 54us      232us     | 235us           310us (unmarshal incl.)
+faithful    98,309    29,447   | 195us     675us     | 113us           1.89ms
+graph      130,817    56,836   | 1.06ms    580us     | 27.7us          1.36ms
+```
+
+(The graph's reads are after the Go generator stopped re-resolving an array field for
+every element of a regular-node cursor — before that they were 71 µs and 2.02 ms.)
+
+Samples dominate a profile, and a regular (vtable) sample node costs 36.9 B against
+protobuf's 23.4; references are buffer offsets where protobuf has small repeated indices,
+which gzip loves and offsets defeat. The deep walk loses in BOTH Dagr layouts — a stack
+walk reaches the same functions thousands of times and the lazy reader resolves each one
+every time, where protobuf decodes each once. The graph wins only the shallow sweep
+(8.5× protobuf). Ship the faithful `OtlpProfiles`; `spec/38` §2.6 has the analysis.
+
 **One open hazard:** the four spools share one framing word and no header, so a spool
 does not record which signal it holds — point each pipeline at its own path. A header
 carrying the signal is part of `spec/38` D2.

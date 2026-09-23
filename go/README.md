@@ -24,6 +24,10 @@
   as `common_gen.go` by `../regen.sh` (gitignored) — the signal packages' Go types
   differ, so no generic can share them. Decoders walk arrays with the generated cursors,
   never `{F}At(i)`.
+- `profilegraphbridge/` — `pprofile` ⇄ `OtlpProfilesGraph`, the experimental graph form
+  of profiles: indices become node references on the way in (one arena node per
+  dictionary entry), and the dictionary is rebuilt from each node's `BufferPos()` on the
+  way out. Gated on the resolved data, not the dictionary's order.
 - `bench/` — the measurements in the top-level README (`signals_test.go`: metrics, logs,
   profiles).
 - `spool/` — the spool file behind both components, for any `spool.Signal`: create or
