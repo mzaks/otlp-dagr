@@ -535,25 +535,32 @@ through a real collector.
 
 Realistic batches (metrics 600 data points; logs 500 records; profiles 2,000 samples over
 a 400-function dictionary), `go test ./bench -run TestSignalSizes -v` and
-`-bench BenchmarkSignal`:
+`-bench BenchmarkSignal` (encode = `encode/dagr_stream`):
 
 ```
-                 size    size.gz |  encode (serializer only)       |  to pdata        |  lazy sweep
-metrics   proto 122,327   14,107 |  39.8us                         |  188us           |  191us (unmarshal+walk)
-          dagr   92,626   13,046 |  122us (68.2us, 0 allocs)  3.1x |  358us     1.90x |  41.5us, 0 allocs   4.6x faster
-logs      proto 119,923   23,697 |  32.1us                         |  149us           |  150us
-          dagr  115,683   23,773 |  81.1us (37.1us, 0 allocs) 2.5x |  221us     1.48x |  27.8us, 0 allocs   5.4x faster
-profiles  proto  93,407   28,997 |  52.8us                         |  229us           |  231us
-          dagr   98,309   29,447 |  187us (92.2us, 0 allocs)  3.5x |  640us     2.80x |  112us, 0 allocs    2.1x faster
+                 size    size.gz |  encode, 0 allocs (serializer only) |  to pdata        |  lazy sweep
+metrics   proto 122,327   14,107 |  40.6us                             |  188us           |  191us (unmarshal+walk)
+          dagr   92,626   13,046 |  82.0us (62.5us)   2.0x              |  358us     1.90x |  41.5us, 0 allocs   4.6x faster
+logs      proto 119,923   23,697 |  32.3us                             |  149us           |  150us
+          dagr  115,683   23,773 |  54.3us (36.8us)   1.7x              |  221us     1.48x |  27.8us, 0 allocs   5.4x faster
+profiles  proto  93,407   28,997 |  52.7us                             |  229us           |  231us
+          dagr   98,309   29,447 |   105us (73.5us)   2.0x              |  640us     2.80x |  112us, 0 allocs    2.1x faster
 ```
 
 - **Size holds** — parity gzipped everywhere, and metrics is the best case in the whole
   benchmark (0.76× raw): a histogram's `bucket_counts` / `explicit_bounds` cost Dagr no
   per-array tag and length on every data point.
 - **Lazy reads hold** — 2.1–5.4× with zero allocations.
-- **Encode does not, yet.** These signals use the plain value-tree bridge, and half their
-  encode time is building that tree; traces reached 1.50× only after a one-pass
-  streaming bridge. Their serializer alone is 1.16–1.75× protobuf.
+- **Encode is 1.7–2.0×, allocation-free.** It was 2.5–3.5×. Two causes, both fixed on
+  2026-09-23. Half the time went into copying pdata into a value tree first (1,004–6,612
+  allocations a batch); each signal now has a one-pass `StreamBuilder`, like traces,
+  that writes the containers by hand and builds one leaf at a time in reused scratch.
+  And the serializer spent a third of its time in numeric arrays (`bucket_counts`,
+  `explicit_bounds`, profiles' index and value arrays), through a generic store with a
+  function call per element; Dagr's Go runtime now has a specialised loop per element
+  type (serializer −8% metrics, −18% profiles). What is left: the serializer itself
+  (1.15–1.4× protobuf — Dagr decides LEB-or-fixed per number, protobuf writes varints
+  blind) and reading pdata into scratch (17–31 µs a batch).
 
 **Profiles is faithful to the proto**: every cross-reference stays an integer index into
 a `ProfilesDictionary` table, so the bridge is a straight copy. That is protobuf's
