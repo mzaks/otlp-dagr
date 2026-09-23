@@ -608,6 +608,36 @@ compaction keep the header a spool was created with. It costs 91 bytes per spool
 Adding it was a wire break (`spec/15` §11), and spools written before it fail with
 `spool.ErrNoHeader`.
 
+## OTAP: Dagr into OpenTelemetry Arrow
+
+`rust/otap` (binary `dagr2otap`) turns a traces, logs or metrics batch into an OTAP
+`BatchArrowRecords` — the input of otel-arrow's receivers — reading the Dagr bytes in place
+through the generated lazy accessors. No value tree and no protobuf anywhere in the chain.
+
+```
+rust/otap/check.sh     # fixtures -> dagr2otap -> otel-arrow's Go consumer AND its Rust decoder
+rust/otap/bench.sh     # vs otel-arrow's own OTLP -> OTAP path, same batches
+```
+
+The gate is otel-arrow's own code: the Go consumer the collector's `otelarrowreceiver` runs
+must give back each fixture (otel-arrow's `assert.Equiv`, plus exact protobuf bytes where no
+kvlist is nested in a value), and the Rust decoder — the strict schema check — must too.
+
+```
+batch            dagr µs  otel-arrow µs  speedup    dagr B  otel-arrow B
+traces-batch       407.7          505.2    1.24x    313269         79166
+logs-batch         209.3          217.7    1.04x    178825         34086
+metrics-batch      259.3          353.8    1.36x    165839         84743
+```
+
+Faster than otel-arrow's own path from OTLP bytes (which already skips prost, through its
+zero-copy protobuf views) — but 2–5× larger, because otel-arrow's producer dictionary-
+encodes, sorts and reuses schemas and this one does not yet. That is the next step.
+Profiles have no OTAP mapping (none upstream). Metric `metadata` is dropped by default:
+the Go consumer rejects the payload that carries it (`Producer::with_metric_metadata`
+keeps it, for Rust receivers). `spec/38` §9 has the contract, the three upstream findings
+the gate turned up, and the numbers.
+
 ## What this says about the next step
 
 | | verdict |
