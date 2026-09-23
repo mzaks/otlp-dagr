@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -88,10 +89,12 @@ func TestExporterWritesTheBuilderOutputVerbatim(t *testing.T) {
 // collector binary is gated by ocb/roundtrip.sh.)
 func TestExporterReceiverRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spans.dagr")
-	// A batch WITH span links: the seeded corpus has none, and the encode path treats
-	// them separately from events, so a round trip over the plain fixture would not
-	// notice an exporter that dropped them.
+	// A batch with span links AND nested (Slice / Map) attribute values. The seeded
+	// corpus has neither, and the encode path treats both separately from the flat
+	// scalar case, so a round trip over the plain fixture would not notice an exporter
+	// that dropped either one — which is exactly how the links gap survived this long.
 	in := fixture.TracesWithLinks(250)
+	fixture.AddNestedAttrs(in)
 
 	e := newExporter(t, &dagrfileexporter.Config{Path: path, Sync: true})
 	if err := e.Start(context.Background(), componenttest.NewNopHost()); err != nil {
@@ -235,7 +238,9 @@ func assertSpansEqual(t *testing.T, want, got ptrace.Traces) {
 		}
 		for k, wv := range w.Attributes().All() {
 			gv, ok := g.Attributes().Get(k)
-			if !ok || gv.AsRaw() != wv.AsRaw() {
+			// DeepEqual, not !=: a Slice or Map attribute's AsRaw() is a []any / map,
+			// and == on those panics at runtime rather than failing to compile.
+			if !ok || !reflect.DeepEqual(gv.AsRaw(), wv.AsRaw()) {
 				t.Fatalf("span %d attribute %q: %v vs %v", i, k, gv.AsRaw(), wv.AsRaw())
 			}
 		}

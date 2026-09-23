@@ -245,3 +245,72 @@ func NewSampling(nTraces, nBatches int) *Sampling {
 	}
 	return s
 }
+
+// ── nested attribute values ──────────────────────────────────────────────────
+
+// TracesWithNestedAttrs is the batch with Slice and Map attribute values added to every
+// fourth span, nested three deep, including the awkward cases: an empty slice, an empty
+// map, an empty element in the middle of a slice, and a map value that is itself absent.
+//
+// Like TracesWithLinks it is kept out of `seed`, which stays a byte-for-byte port of the
+// Rust benchmark's otlp_seed(). And like links, these values exist because the encode
+// path treats them separately: an attribute that is a scalar never reaches the recursive
+// branch, so a corpus of scalars gates nothing about it.
+func TracesWithNestedAttrs(n int) ptrace.Traces {
+	td := TracesN(n)
+	AddNestedAttrs(td)
+	return td
+}
+
+// AddNestedAttrs decorates an existing batch in place, so a gate can combine it with
+// another shape — links and nested values in one batch, which is what a real collector
+// sees and what the exporter/receiver round trip runs on.
+func AddNestedAttrs(td ptrace.Traces) {
+	i := 0
+	for r := 0; r < td.ResourceSpans().Len(); r++ {
+		rs := td.ResourceSpans().At(r)
+		for s := 0; s < rs.ScopeSpans().Len(); s++ {
+			spans := rs.ScopeSpans().At(s).Spans()
+			for k := 0; k < spans.Len(); k++ {
+				sp := spans.At(k)
+				if i%4 != 0 {
+					i++
+					continue
+				}
+				at := sp.Attributes()
+
+				// a flat slice of scalars — the common real case (header values)
+				hdr := at.PutEmptySlice("http.request.header.accept")
+				hdr.AppendEmpty().SetStr("text/html")
+				hdr.AppendEmpty().SetStr("application/xhtml+xml")
+
+				// mixed types, an empty element in the middle, and a nested slice
+				mixed := at.PutEmptySlice("rpc.args")
+				mixed.AppendEmpty().SetInt(int64(i))
+				mixed.AppendEmpty() // stays ValueTypeEmpty — must keep its position
+				mixed.AppendEmpty().SetBool(i%8 == 0)
+				inner := mixed.AppendEmpty().SetEmptySlice()
+				inner.AppendEmpty().SetDouble(float64(i) / 4)
+				inner.AppendEmpty().SetEmptyBytes().FromRaw([]byte{byte(i), 0xff})
+
+				// a map, holding a map, holding a slice — three levels down
+				m := at.PutEmptyMap("db.query.parameters")
+				m.PutStr("table", "orders")
+				m.PutInt("limit", int64(100+i))
+				sub := m.PutEmptyMap("filter")
+				sub.PutBool("active", true)
+				sub.PutEmpty("unset") // a present key with no value
+				tags := sub.PutEmptySlice("tags")
+				tags.AppendEmpty().SetStr("eu")
+				tags.AppendEmpty().SetStr("prod")
+
+				// the degenerate shapes
+				at.PutEmptySlice("empty.slice")
+				at.PutEmptyMap("empty.map")
+				at.PutEmpty("empty.value")
+
+				i++
+			}
+		}
+	}
+}

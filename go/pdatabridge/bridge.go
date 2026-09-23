@@ -55,6 +55,16 @@ func optSlice[T any](s []T) dagr.Opt[[]T] {
 
 // ── encode: pdata -> Dagr bytes (direct builder, no arena) ───────────────────
 
+// attrValue converts one pdata attribute value, recursing through Slice and Map.
+//
+// The recursion is why `ArrayValue` and `KeyValueList` are collapsed out of the schema:
+// those two messages exist in the proto only because "oneof in AnyValue does not allow
+// repeated fields", and a Dagr union takes an array variant directly. So a nested value
+// maps straight onto `array_value` / `kvlist_value` with no wrapper node in between.
+//
+// The `false` return now means ONE thing — pcommon.ValueTypeEmpty, an attribute that is
+// present but holds no value. Callers turn that into an ABSENT Dagr field rather than
+// dropping the attribute, so an empty value survives the round trip as an empty value.
 func attrValue(v pcommon.Value) (d.AnyValueValue, bool) {
 	switch v.Type() {
 	case pcommon.ValueTypeStr:
@@ -67,11 +77,36 @@ func attrValue(v pcommon.Value) (d.AnyValueValue, bool) {
 		return d.AnyValueBoolValue(v.Bool()), true
 	case pcommon.ValueTypeBytes:
 		return d.AnyValueBytesValue(v.Bytes().AsRaw()), true
-	default:
-		// Slice / Map would need ArrayValue / KeyValueList; the seeded workload has
-		// neither, and silently dropping one would make a round-trip gate lie.
+	case pcommon.ValueTypeSlice:
+		return d.AnyValueArrayValue(anyValueList(v.Slice())), true
+	case pcommon.ValueTypeMap:
+		return d.AnyValueKvlistValue(keyValues(v.Map())), true
+	default: // pcommon.ValueTypeEmpty
 		return d.AnyValueValue{}, false
 	}
+}
+
+// anyValueList converts a pdata Slice. The element type is an OPTIONAL union
+// (`dagr.Opt[AnyValueValue]`), so an empty element keeps its position instead of
+// collapsing the slice — which is the difference between `["a", , "c"]` and `["a", "c"]`.
+//
+// Nested values allocate, unlike the flat attribute path, and they have to: each level
+// hands the builder a slice it keeps a pointer into, so the storage cannot be scratch
+// that the next attribute overwrites. Scalar-only batches — which is nearly all OTLP
+// traffic, and all of the benchmark's — never reach here and stay allocation-free.
+func anyValueList(s pcommon.Slice) d.AnyValueList {
+	if s.Len() == 0 {
+		return nil
+	}
+	out := make(d.AnyValueList, 0, s.Len())
+	for i := 0; i < s.Len(); i++ {
+		if av, ok := attrValue(s.At(i)); ok {
+			out = append(out, dagr.Some(av))
+		} else {
+			out = append(out, dagr.Opt[d.AnyValueValue]{})
+		}
+	}
+	return out
 }
 
 func keyValues(m pcommon.Map) []d.KeyValue {
@@ -80,9 +115,11 @@ func keyValues(m pcommon.Map) []d.KeyValue {
 	}
 	out := make([]d.KeyValue, 0, m.Len())
 	m.Range(func(k string, v pcommon.Value) bool {
+		kv := d.KeyValue{Key: nonEmpty(k)}
 		if av, ok := attrValue(v); ok {
-			out = append(out, d.KeyValue{Key: nonEmpty(k), Value: some(av)})
+			kv.Value = some(av)
 		}
+		out = append(out, kv)
 		return true
 	})
 	return out

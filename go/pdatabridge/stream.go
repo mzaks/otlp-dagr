@@ -121,13 +121,22 @@ func (w *StreamBuilder) putScopeSpans(ss ptrace.ScopeSpans, b *dagr.Builder, buf
 
 // ── one node at a time, into scratch the next node reuses ────────────────────
 
+// fillAttrs writes one attribute map into caller-owned storage. It mirrors keyValues:
+// an EMPTY pdata value keeps its key and leaves the Dagr field absent, rather than
+// dropping the attribute.
+//
+// Nested Slice / Map values allocate inside attrValue — they must, since the builder
+// keeps a pointer into the slice each level hands it, so that storage cannot be scratch
+// the next attribute reuses. The flat path this function exists for stays allocation-free.
 func fillAttrs(dst []d.KeyValue, m pcommon.Map) []d.KeyValue {
 	n := 0
 	m.Range(func(k string, v pcommon.Value) bool {
+		kv := d.KeyValue{Key: nonEmpty(k)}
 		if av, ok := attrValue(v); ok {
-			dst[n] = d.KeyValue{Key: nonEmpty(k), Value: some(av)}
-			n++
+			kv.Value = some(av)
 		}
+		dst[n] = kv
+		n++
 		return true
 	})
 	return dst[:n]

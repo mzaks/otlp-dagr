@@ -155,6 +155,17 @@ func toPSpan(src g.SpanAccessor, sp ptrace.Span) {
 	}
 }
 
+// MaxValueDepth bounds how far ToTraces will follow nested attribute values.
+//
+// A Dagr buffer can nest `array_value` / `kvlist_value` arbitrarily, and this decoder is
+// recursive, so an adversarial or corrupt buffer could otherwise exhaust the goroutine
+// stack — a crash that the reader's own bounds checking does not prevent, because every
+// individual read is perfectly valid. Beyond the limit the value is left EMPTY rather
+// than silently truncated to something that looks like data. Protobuf's own decoder
+// takes the same precaution (a recursion limit, 100 by default); 32 is far past any
+// real OTLP attribute, which is rarely nested at all.
+const MaxValueDepth = 32
+
 // putAttrs copies a Dagr []KeyValue into a pcommon.Map. The accessor pair is passed
 // as funcs because five different node types expose the same two-method shape.
 func putAttrs(dst pcommon.Map, length func() (int, bool), at func(int) g.KeyValueAccessor) {
@@ -169,21 +180,67 @@ func putAttrs(dst pcommon.Map, length func() (int, bool), at func(int) g.KeyValu
 		if !ok {
 			continue
 		}
-		v, ok := kv.Value()
+		// An absent value is an attribute that is present and empty — pdata spells that
+		// ValueTypeEmpty — so the key is kept either way.
+		slot := dst.PutEmpty(key)
+		if v, ok := kv.Value(); ok {
+			putValue(slot, v, 0)
+		}
+	}
+}
+
+// putValue materialises one Dagr union value into a pdata Value, recursing through
+// array_value and kvlist_value. An unknown tag leaves the value empty, which is how a
+// reader built against an older schema survives a newer writer.
+func putValue(dst pcommon.Value, v g.AnyValuePackedView, depth int) {
+	if depth >= MaxValueDepth {
+		return
+	}
+	switch v.Tag() {
+	case g.AnyValueTagStringValue:
+		dst.SetStr(v.StringValue())
+	case g.AnyValueTagIntValue:
+		dst.SetInt(v.IntValue())
+	case g.AnyValueTagDoubleValue:
+		dst.SetDouble(v.DoubleValue())
+	case g.AnyValueTagBoolValue:
+		dst.SetBool(v.BoolValue())
+	case g.AnyValueTagBytesValue:
+		dst.SetEmptyBytes().FromRaw(v.BytesValue())
+	case g.AnyValueTagArrayValue:
+		putSlice(dst.SetEmptySlice(), v, depth+1)
+	case g.AnyValueTagKvlistValue:
+		putKvlist(dst.SetEmptyMap(), v, depth+1)
+	}
+}
+
+// putSlice copies an array_value. Elements are optional on the wire, and an absent one
+// keeps its position as an empty value — dropping it would renumber the slice.
+func putSlice(dst pcommon.Slice, v g.AnyValuePackedView, depth int) {
+	av := v.ArrayValue()
+	dst.EnsureCapacity(av.Len())
+	for elem, present := range av.All() {
+		slot := dst.AppendEmpty()
+		if present {
+			putValue(slot, elem, depth)
+		}
+	}
+}
+
+// putKvlist copies a kvlist_value. Its elements are KeyValue nodes, so they come through
+// the node accessors rather than the union array view.
+func putKvlist(dst pcommon.Map, v g.AnyValuePackedView, depth int) {
+	n := v.KvlistValueLen()
+	dst.EnsureCapacity(n)
+	for i := 0; i < n; i++ {
+		kv := v.KvlistValueAt(i)
+		key, ok := kv.Key()
 		if !ok {
 			continue
 		}
-		switch v.Tag() {
-		case g.AnyValueTagStringValue:
-			dst.PutStr(key, v.StringValue())
-		case g.AnyValueTagIntValue:
-			dst.PutInt(key, v.IntValue())
-		case g.AnyValueTagDoubleValue:
-			dst.PutDouble(key, v.DoubleValue())
-		case g.AnyValueTagBoolValue:
-			dst.PutBool(key, v.BoolValue())
-		case g.AnyValueTagBytesValue:
-			dst.PutEmptyBytes(key).FromRaw(v.BytesValue())
+		slot := dst.PutEmpty(key)
+		if inner, ok := kv.Value(); ok {
+			putValue(slot, inner, depth)
 		}
 	}
 }
