@@ -10,9 +10,20 @@ receivers:
       http:
         endpoint: 127.0.0.1:4318
 
+# One spool per signal: a component instance serves one pipeline, and a spool records no
+# signal identity on the wire yet (spec/38 D2), so each gets its own path.
 exporters:
   dagrfile:
     path: ${SPOOL}
+    resume: true
+  dagrfile/metrics:
+    path: ${WORK}/metrics.dagr
+    resume: true
+  dagrfile/logs:
+    path: ${WORK}/logs.dagr
+    resume: true
+  dagrfile/profiles:
+    path: ${WORK}/profiles.dagr
     resume: true
 
 service:
@@ -25,3 +36,14 @@ service:
     traces:
       receivers: [otlp]
       exporters: [dagrfile]
+    metrics:
+      receivers: [otlp]
+      exporters: [dagrfile/metrics]
+    logs:
+      receivers: [otlp]
+      exporters: [dagrfile/logs]
+    # profiles is `v1development`: roundtrip.sh runs the collector with
+    # --feature-gates=service.profilesSupport.
+    profiles:
+      receivers: [otlp]
+      exporters: [dagrfile/profiles]

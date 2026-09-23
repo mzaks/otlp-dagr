@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Build a real collector with ocb and run a batch through it, out to a Dagr spool and
-# back in — spec/38 §6.1.1 gate 2, plus gates 3 and 4 on the file the collector produced.
+# Build a real collector with ocb and run every signal through it — traces, metrics, logs
+# and profiles, each out to its own Dagr spool and back in — spec/38 §6.1.1 gate 2, plus
+# gates 3 and 4 on the files the collector produced.
 #
 #   ./ocb/roundtrip.sh              # build if needed, then round trip
 #   ./ocb/roundtrip.sh build        # build the collector only
@@ -27,7 +28,7 @@ fi
 
 render() {  # render <template> <out>
   ROOT="$ROOT" OTELCOL_VERSION="$OTELCOL_VERSION" CONTRIB_VERSION="$CONTRIB_VERSION" \
-  SPOOL="$WORK/spans.dagr" DUMP="$WORK/out.json" \
+  SPOOL="$WORK/spans.dagr" DUMP="$WORK/out.json" WORK="$WORK" \
     python3 -c 'import os,sys,string;sys.stdout.write(string.Template(open(sys.argv[1]).read()).safe_substitute(os.environ))' \
     "$1" > "$2"
 }
@@ -47,7 +48,7 @@ build() {
 
 run_phase() {  # run_phase <name> <config> <ready-log-fragment>
   local name="$1" cfg="$2" log="$WORK/$1.log"
-  "$BIN" --config "$cfg" >"$log" 2>&1 &
+  "$BIN" --config "$cfg" --feature-gates=service.profilesSupport >"$log" 2>&1 &
   local pid=$!
   for _ in $(seq 1 120); do
     grep -q "Everything is ready" "$log" 2>/dev/null && break
@@ -60,7 +61,9 @@ run_phase() {  # run_phase <name> <config> <ready-log-fragment>
 [ "${1:-}" = "build" ] && { build; exit 0; }
 [ -x "$BIN" ] || build
 
+SIGNALS="metrics logs profiles"
 rm -rf "$WORK/spans.dagr" "$WORK/out.json"
+for s in $SIGNALS; do rm -f "$WORK/$s.dagr" "$WORK/out-$s.json"; done
 mkdir -p "$WORK"
 render "$ROOT/ocb/collector-export.yaml" "$WORK/collector-export.yaml"
 render "$ROOT/ocb/collector-import.yaml" "$WORK/collector-import.yaml"
@@ -69,23 +72,37 @@ echo "==> phase A: OTLP -> dagrfile exporter -> $WORK/spans.dagr"
 pid=$(run_phase export "$WORK/collector-export.yaml")
 trap 'kill "$pid" 2>/dev/null || true' EXIT
 (cd go && go run ./cmd/otlpdagrctl send -spans "$SPANS" -batches "$BATCHES")
+for s in $SIGNALS; do
+  (cd go && go run ./cmd/otlpdagrctl send -signal "$s" -batches "$BATCHES")
+done
 sleep 1
 kill -INT "$pid"; wait "$pid" 2>/dev/null || true
 trap - EXIT
 
 echo "==> the spool a real collector wrote"
 (cd go && go run ./cmd/otlpdagrctl spool -path "$WORK/spans.dagr" -batches "$BATCHES" -spans "$((SPANS * BATCHES))")
+for s in $SIGNALS; do
+  (cd go && go run ./cmd/otlpdagrctl spool -signal "$s" -path "$WORK/$s.dagr" -batches "$BATCHES")
+done
 
 echo "==> phase B: dagrfile receiver -> file exporter -> $WORK/out.json"
 pid=$(run_phase import "$WORK/collector-import.yaml")
 trap 'kill "$pid" 2>/dev/null || true' EXIT
-for _ in $(seq 1 60); do [ -s "$WORK/out.json" ] && break; sleep 0.25; done
+for _ in $(seq 1 60); do
+  ready=1
+  for f in out.json out-metrics.json out-logs.json out-profiles.json; do [ -s "$WORK/$f" ] || ready=0; done
+  [ $ready = 1 ] && break
+  sleep 0.25
+done
 sleep 1
 kill -INT "$pid"; wait "$pid" 2>/dev/null || true
 trap - EXIT
 
 echo "==> comparing what came out with what went in"
 (cd go && go run ./cmd/otlpdagrctl verify -path "$WORK/out.json" -spans "$SPANS" -batches "$BATCHES")
+for s in $SIGNALS; do
+  (cd go && go run ./cmd/otlpdagrctl verify -signal "$s" -path "$WORK/out-$s.json" -batches "$BATCHES")
+done
 
 echo "==> a kill mid-write is detected, not silently accepted"
 cp "$WORK/spans.dagr" "$WORK/torn.dagr"

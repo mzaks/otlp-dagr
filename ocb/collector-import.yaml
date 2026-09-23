@@ -3,14 +3,26 @@
 # The receiver materialises each batch into pdata so an UNMODIFIED pipeline can consume
 # it. That is the slow path by construction (spec/38 §0.1: eager restore is ~1.6x slower
 # than a protobuf unmarshal) and it is here for compatibility, not for speed. The file
-# exporter writes OTLP JSON so the spans can be compared with what went in.
+# exporters write OTLP JSON so every signal can be compared with what went in.
 receivers:
   dagrfile:
     path: ${SPOOL}
+  dagrfile/metrics:
+    path: ${WORK}/metrics.dagr
+  dagrfile/logs:
+    path: ${WORK}/logs.dagr
+  dagrfile/profiles:
+    path: ${WORK}/profiles.dagr
 
 exporters:
   file:
     path: ${DUMP}
+  file/metrics:
+    path: ${WORK}/out-metrics.json
+  file/logs:
+    path: ${WORK}/out-logs.json
+  file/profiles:
+    path: ${WORK}/out-profiles.json
 
 service:
   telemetry:
@@ -22,3 +34,12 @@ service:
     traces:
       receivers: [dagrfile]
       exporters: [file]
+    metrics:
+      receivers: [dagrfile/metrics]
+      exporters: [file/metrics]
+    logs:
+      receivers: [dagrfile/logs]
+      exporters: [file/logs]
+    profiles:
+      receivers: [dagrfile/profiles]
+      exporters: [file/profiles]
