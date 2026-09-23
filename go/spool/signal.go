@@ -2,10 +2,11 @@ package spool
 
 // signal.go — the four spools. Every signal's DataSink (SpanLog, MetricLog, LogRecordLog,
 // ProfileLog in schema.py) has the same shape: one doubly-linked record type, `Batch`,
-// holding the receive time, an item count and the batch as a raw embedded graph. The
-// framing is identical too, so everything in spool.go that does not touch a record body
-// — tail integrity, recovery, the reverse walk — is shared, and only these adapters
-// know which generated sink package is behind a Signal.
+// holding the receive time, an item count and the signal's top-level array inline
+// (`resource_spans`, ...; profiles adds its `dictionary`). The framing is identical too,
+// so everything in spool.go that does not touch a record body — tail integrity,
+// recovery, the reverse walk — is shared, and only these adapters know which generated
+// sink package is behind a Signal.
 
 import (
 	"fmt"
@@ -21,10 +22,10 @@ import (
 type Signal uint8
 
 const (
-	Traces   Signal = iota // SpanLog: Count = spans, Payload = an OtlpTraces buffer
-	Metrics                // MetricLog: Count = data points, Payload = an OtlpMetrics buffer
-	Logs                   // LogRecordLog: Count = log records, Payload = an OtlpLogs buffer
-	Profiles               // ProfileLog: Count = samples, Payload = an OtlpProfiles buffer
+	Traces   Signal = iota // SpanLog: Count = spans, Record = a spanlog Batch
+	Metrics                // MetricLog: Count = data points, Record = a metriclog Batch
+	Logs                   // LogRecordLog: Count = log records, Record = a logrecordlog Batch
+	Profiles               // ProfileLog: Count = samples, Record = a profilelog Batch
 )
 
 func (s Signal) String() string {
@@ -44,10 +45,13 @@ func (s Signal) String() string {
 // Range is where a record sits in the spool: [Start, End) including its trailing RLEB.
 type Range struct{ TypeID, Start, End int }
 
+// batchTypeID is the typeId of `Batch`, the one record type of every spool.
+const batchTypeID = 0
+
 // framedWriter is the generated stream writer, reduced to what Writer needs.
 type framedWriter interface {
 	EnsureFraming() error
-	append(receivedUnixNano uint64, count uint32, payload []byte) error
+	appendRaw(record []byte) error
 }
 
 type ops struct {
@@ -105,15 +109,29 @@ func (s Signal) ops() ops {
 
 type spanW struct{ *spanlog.SpanLogWriter }
 
-func (w spanW) append(t uint64, n uint32, p []byte) error {
-	_, err := w.AppendBatch(spanlog.Batch{ReceivedUnixNano: t, SpanCount: n, Traces: p})
+func (w spanW) appendRaw(record []byte) error {
+	_, err := w.AppendRaw(batchTypeID, record)
 	return err
 }
 
+// AppendTraces writes one SpanLog batch from values: the span graph's direct-builder
+// values, which spanlog aliases, stored with that graph's own code.
+func (w *Writer) AppendTraces(v spanlog.Batch) error {
+	sw, ok := w.w.(spanW)
+	if !ok {
+		return w.wrongSignal(Traces)
+	}
+	_, err := sw.AppendBatch(v)
+	return w.appended(err)
+}
+
 func spanBatch(rec spanlog.SpanLogRecord) (Batch, bool) {
-	v, ok := rec.Batch()
+	a, ok := rec.BatchAccessor()
+	if !ok {
+		return Batch{}, false
+	}
 	r := rec.Range()
-	return Batch{v.ReceivedUnixNano, v.SpanCount, v.Traces, Range{r.TypeID, r.Start, r.End}}, ok
+	return Batch{a.ReceivedUnixNano(), a.SpanCount(), rec.Raw(), Range{r.TypeID, r.Start, r.End}}, true
 }
 
 var spanOps = ops{
@@ -157,15 +175,29 @@ func spanReverse(buf []byte, fn func(Batch) bool) error {
 
 type metricW struct{ *metriclog.MetricLogWriter }
 
-func (w metricW) append(t uint64, n uint32, p []byte) error {
-	_, err := w.AppendBatch(metriclog.Batch{ReceivedUnixNano: t, DataPointCount: n, Metrics: p})
+func (w metricW) appendRaw(record []byte) error {
+	_, err := w.AppendRaw(batchTypeID, record)
 	return err
 }
 
+// AppendMetrics writes one MetricLog batch from values: the metric graph's direct-builder
+// values, which metriclog aliases, stored with that graph's own code.
+func (w *Writer) AppendMetrics(v metriclog.Batch) error {
+	sw, ok := w.w.(metricW)
+	if !ok {
+		return w.wrongSignal(Metrics)
+	}
+	_, err := sw.AppendBatch(v)
+	return w.appended(err)
+}
+
 func metricBatch(rec metriclog.MetricLogRecord) (Batch, bool) {
-	v, ok := rec.Batch()
+	a, ok := rec.BatchAccessor()
+	if !ok {
+		return Batch{}, false
+	}
 	r := rec.Range()
-	return Batch{v.ReceivedUnixNano, v.DataPointCount, v.Metrics, Range{r.TypeID, r.Start, r.End}}, ok
+	return Batch{a.ReceivedUnixNano(), a.DataPointCount(), rec.Raw(), Range{r.TypeID, r.Start, r.End}}, true
 }
 
 var metricOps = ops{
@@ -211,15 +243,29 @@ type logW struct {
 	*logrecordlog.LogRecordLogWriter
 }
 
-func (w logW) append(t uint64, n uint32, p []byte) error {
-	_, err := w.AppendBatch(logrecordlog.Batch{ReceivedUnixNano: t, LogRecordCount: n, Logs: p})
+func (w logW) appendRaw(record []byte) error {
+	_, err := w.AppendRaw(batchTypeID, record)
 	return err
 }
 
+// AppendLogs writes one LogRecordLog batch from values: the log graph's direct-builder
+// values, which logrecordlog aliases, stored with that graph's own code.
+func (w *Writer) AppendLogs(v logrecordlog.Batch) error {
+	sw, ok := w.w.(logW)
+	if !ok {
+		return w.wrongSignal(Logs)
+	}
+	_, err := sw.AppendBatch(v)
+	return w.appended(err)
+}
+
 func logBatch(rec logrecordlog.LogRecordLogRecord) (Batch, bool) {
-	v, ok := rec.Batch()
+	a, ok := rec.BatchAccessor()
+	if !ok {
+		return Batch{}, false
+	}
 	r := rec.Range()
-	return Batch{v.ReceivedUnixNano, v.LogRecordCount, v.Logs, Range{r.TypeID, r.Start, r.End}}, ok
+	return Batch{a.ReceivedUnixNano(), a.LogRecordCount(), rec.Raw(), Range{r.TypeID, r.Start, r.End}}, true
 }
 
 var logOps = ops{
@@ -263,15 +309,29 @@ func logReverse(buf []byte, fn func(Batch) bool) error {
 
 type profileW struct{ *profilelog.ProfileLogWriter }
 
-func (w profileW) append(t uint64, n uint32, p []byte) error {
-	_, err := w.AppendBatch(profilelog.Batch{ReceivedUnixNano: t, SampleCount: n, Profiles: p})
+func (w profileW) appendRaw(record []byte) error {
+	_, err := w.AppendRaw(batchTypeID, record)
 	return err
 }
 
+// AppendProfiles writes one ProfileLog batch from values: the profile graph's direct-builder
+// values, which profilelog aliases, stored with that graph's own code.
+func (w *Writer) AppendProfiles(v profilelog.Batch) error {
+	sw, ok := w.w.(profileW)
+	if !ok {
+		return w.wrongSignal(Profiles)
+	}
+	_, err := sw.AppendBatch(v)
+	return w.appended(err)
+}
+
 func profileBatch(rec profilelog.ProfileLogRecord) (Batch, bool) {
-	v, ok := rec.Batch()
+	a, ok := rec.BatchAccessor()
+	if !ok {
+		return Batch{}, false
+	}
 	r := rec.Range()
-	return Batch{v.ReceivedUnixNano, v.SampleCount, v.Profiles, Range{r.TypeID, r.Start, r.End}}, ok
+	return Batch{a.ReceivedUnixNano(), a.SampleCount(), rec.Raw(), Range{r.TypeID, r.Start, r.End}}, true
 }
 
 var profileOps = ops{

@@ -112,7 +112,7 @@
             "frozen": false,
             "kind": "node",
             "name": "KeyValue",
-            "packed": true,
+            "packed": false,
             "prefabs": {}
           },
           {
@@ -173,7 +173,7 @@
             "frozen": false,
             "kind": "node",
             "name": "InstrumentationScope",
-            "packed": true,
+            "packed": false,
             "prefabs": {}
           },
           {
@@ -236,7 +236,7 @@
             "frozen": false,
             "kind": "node",
             "name": "EntityRef",
-            "packed": true,
+            "packed": false,
             "prefabs": {}
           },
           {
@@ -289,7 +289,7 @@
             "frozen": false,
             "kind": "node",
             "name": "Resource",
-            "packed": true,
+            "packed": false,
             "prefabs": {}
           }
         ],
@@ -4039,7 +4039,7 @@
                 "default": null,
                 "index": null,
                 "name": "received_unix_nano",
-                "options": 1,
+                "options": 9,
                 "timestamp": {
                   "epoch": "unix",
                   "unit": "ns"
@@ -4065,12 +4065,15 @@
                 "capacity": null,
                 "default": null,
                 "index": null,
-                "name": "logs",
-                "options": 9,
+                "name": "resource_logs",
+                "options": 1,
                 "timestamp": null,
                 "type": {
-                  "kind": "ref",
-                  "ref": "LogsData"
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceLogs"
+                  },
+                  "kind": "array"
                 }
               }
             ],
@@ -4102,7 +4105,7 @@
                 "default": null,
                 "index": null,
                 "name": "received_unix_nano",
-                "options": 1,
+                "options": 9,
                 "timestamp": {
                   "epoch": "unix",
                   "unit": "ns"
@@ -4128,12 +4131,15 @@
                 "capacity": null,
                 "default": null,
                 "index": null,
-                "name": "metrics",
-                "options": 9,
+                "name": "resource_metrics",
+                "options": 1,
                 "timestamp": null,
                 "type": {
-                  "kind": "ref",
-                  "ref": "MetricsData"
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceMetrics"
+                  },
+                  "kind": "array"
                 }
               }
             ],
@@ -4165,7 +4171,7 @@
                 "default": null,
                 "index": null,
                 "name": "received_unix_nano",
-                "options": 1,
+                "options": 9,
                 "timestamp": {
                   "epoch": "unix",
                   "unit": "ns"
@@ -4191,12 +4197,28 @@
                 "capacity": null,
                 "default": null,
                 "index": null,
-                "name": "profiles",
-                "options": 9,
+                "name": "resource_profiles",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceProfiles"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dictionary",
+                "options": 0,
                 "timestamp": null,
                 "type": {
                   "kind": "ref",
-                  "ref": "ProfilesData"
+                  "ref": "ProfilesDictionary"
                 }
               }
             ],
@@ -4228,7 +4250,7 @@
                 "default": null,
                 "index": null,
                 "name": "received_unix_nano",
-                "options": 1,
+                "options": 9,
                 "timestamp": {
                   "epoch": "unix",
                   "unit": "ns"
@@ -4254,12 +4276,15 @@
                 "capacity": null,
                 "default": null,
                 "index": null,
-                "name": "traces",
-                "options": 9,
+                "name": "resource_spans",
+                "options": 1,
                 "timestamp": null,
                 "type": {
-                  "kind": "ref",
-                  "ref": "TracesData"
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceSpans"
+                  },
+                  "kind": "array"
                 }
               }
             ],
@@ -4274,65 +4299,65 @@
     },
     "wire_format_version": 1
   },
-  "library_hash": "sha256:47ca5eaa7dbe0d8aa36617f653fbd666939524c4069327b9fa3235d249292f56",
+  "library_hash": "sha256:d663b302097e46d0f58df1e176a5cb4320203f50cf7cddc7630db3f7dd242ad0",
   "outputs": {
     "go/gen/dagr/reader.go": "sha256:52241688c1535ab8ea98b014aebebe26e8a3baab174840afe07ea0d4e0231363",
     "go/gen/dagr/writer.go": "sha256:ad1281ed85c2c251d3fbd7623b93d8cefef4b13bf163efa989cacd2734329ec0",
     "go/gen/go.mod": "sha256:a31961fab517fcdc05aefcf74884d3f0c15eef029955a4e8c25b7a967a3509e9",
-    "go/gen/logrecordlog/log_record_log.go": "sha256:4ea4f79a1f0ba7b246c0c6cad0d49a3f09d1e42777991deb99313f7588d46b49",
-    "go/gen/metriclog/metric_log.go": "sha256:56564eb7c3212f020172bfedb60ea0a5c40df555aa85a43bc9b318d11dec2666",
-    "go/gen/otlplogs/otlp_logs.go": "sha256:2fac5cae630824c167615c425d7aef7a96c98d941f978601cecfc7113533a1b0",
+    "go/gen/logrecordlog/log_record_log.go": "sha256:d7e82f2b12f3b86054285948e8a28a99c95df19ca745e5afa30660bf2fb85ff8",
+    "go/gen/metriclog/metric_log.go": "sha256:2b11ed6ce8b8da04f9a7f787d92dc5bdd9b2211e9f5e91a171b0e3074465b72e",
+    "go/gen/otlplogs/otlp_logs.go": "sha256:a7a86bee1eedac6a55918081c99c95bdce4ca5e6e1beb827d518db78197247ec",
     "go/gen/otlplogs/otlp_logs_arena.go": "sha256:9ecc209f2ffdd09fc2dc26a0c8789d6f47631520ccf12da917f91b0d60c6cd94",
     "go/gen/otlplogs/otlp_logs_serde.go": "sha256:aded01cb23afe6cc5e24758090c58046da3936a3ce3f3b62b5830c7e548f5bd8",
-    "go/gen/otlplogsdirect/otlp_logs.go": "sha256:8f8a7fcc36012d830468bb5eb15c06053301b50125886526e97b21cda51b0ee4",
-    "go/gen/otlpmetrics/otlp_metrics.go": "sha256:4f3f5868c518d86469d19e152642a5bfab5897436f1271d9edd25585caa4cea1",
+    "go/gen/otlplogsdirect/otlp_logs.go": "sha256:079e2b39d5ecff355595d538914f9957a246957c2fb3e8199a289f2a8b42ccf9",
+    "go/gen/otlpmetrics/otlp_metrics.go": "sha256:6d718becf4bc803be6b89e4f07ad1db09af9dd490cc48eec1dfb9fce4376bc5f",
     "go/gen/otlpmetrics/otlp_metrics_arena.go": "sha256:e04008303bb60fcf4d283bd43339d20bb0f399bb7d1e6741cf14409dd89c0e46",
     "go/gen/otlpmetrics/otlp_metrics_serde.go": "sha256:dc30b443122273ad14418a708be40b5f4ef2c1a93b8928504ebce3edc00605d7",
-    "go/gen/otlpmetricsdirect/otlp_metrics.go": "sha256:0024689646f4f5c6ea65b3dfcfc03e5979be51616aebc2ff31454ad93c84ce1c",
-    "go/gen/otlpprofiles/otlp_profiles.go": "sha256:717f412e3aee5858d431336458c5e81ea51ea1e1cee96925568e055b152b5020",
+    "go/gen/otlpmetricsdirect/otlp_metrics.go": "sha256:0a2bbd2a431735c5b52bfb598a5eae3313f287fa9996441d24f6ba301a8414f0",
+    "go/gen/otlpprofiles/otlp_profiles.go": "sha256:5272f57026d9358f254659d4bc6d4f82c1615dc59b8f42e671a6e76a0fa86055",
     "go/gen/otlpprofiles/otlp_profiles_arena.go": "sha256:07ce79ab300b968512f90d3a6c451bb1e58f614380e5398b87545b3d241ca3e5",
     "go/gen/otlpprofiles/otlp_profiles_serde.go": "sha256:b09ca4c80a32baf0b6bdb899cc0f465e75ae7f2e7e9cfc2f7033fb9390583e73",
-    "go/gen/otlpprofilesdirect/otlp_profiles.go": "sha256:c0deba9cf2df7674c54b6db94c7bc96f68d8a2cb4cd8e992c48f2c9ace974079",
-    "go/gen/otlpprofilesgraph/otlp_profiles_graph.go": "sha256:6457ae87699aa35b0e8b8eabf4c8aafa9ffe154b1d780f135225690ecd863d2c",
-    "go/gen/otlpprofilesgraph/otlp_profiles_graph_arena.go": "sha256:fef46cb9c1e18b2d8724f743dabfd5eed0f6658826d651c34065d8df27f605bd",
-    "go/gen/otlpprofilesgraph/otlp_profiles_graph_serde.go": "sha256:7674cdab7545e4f00754f47939d21c5f6668fb9f95a60850d71ebbc226ac6807",
-    "go/gen/otlptraces/otlp_traces.go": "sha256:e69d398d30f3f203e5ea68442d2812f38d84b3f91aa4a6044715a3617008c0c7",
+    "go/gen/otlpprofilesdirect/otlp_profiles.go": "sha256:a850b8e2fcc1cfa25b7bee066c8c6950b141b7c0995c93b3b52b36ec2c0f6079",
+    "go/gen/otlpprofilesgraph/otlp_profiles_graph.go": "sha256:42a614aece7b009537bbb52a3f944d0b197d164ef449e9ab8a10ad093fa02c52",
+    "go/gen/otlpprofilesgraph/otlp_profiles_graph_arena.go": "sha256:e4d833d831211e41fb5679723c223d10acfa3dadcaf4e33880400c1a7cdfa2c9",
+    "go/gen/otlpprofilesgraph/otlp_profiles_graph_serde.go": "sha256:bc89daada5ff8514a1028aca5b8faa52638ff4a49013d0f3f4719a08d4614c8e",
+    "go/gen/otlptraces/otlp_traces.go": "sha256:4069544bf5a839d433e7ee609dbb37c27cda68360a070a9be5cc8dfff6abb150",
     "go/gen/otlptraces/otlp_traces_arena.go": "sha256:14dcfbd2f9153f4c7051d59ee7b9cc84e6db1c6f7ca7e250c8df9a976716c201",
     "go/gen/otlptraces/otlp_traces_serde.go": "sha256:16ffdca0e57707653966d97eb2b42f088879aa20e0f536ccdb2feadd33cf1e43",
-    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:5abf64c69bd60e7473e7e6b616937361c519042bd9a42caded140718349650d6",
-    "go/gen/profilelog/profile_log.go": "sha256:d103b6a22aa3d8397aaf4b0fd384e46e1ab300beb0173388ace884c559d141b7",
-    "go/gen/spanlog/span_log.go": "sha256:667346e47e12d52349d4b104edb0953861359e492f0ecd97e67e503ed18b120c",
+    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:39668e9e0861719a4998c73e73fa2fa36135d2e4dc17d96018f45f94d8e20ba3",
+    "go/gen/profilelog/profile_log.go": "sha256:3693caa43ef7028ca358c5a967dcf1bb7456c435f921feb7d7b45bed35ed81a8",
+    "go/gen/spanlog/span_log.go": "sha256:a85ca4a53dfe303c5c90028014f5c96fcd278731623aae4b6934ee9d909f5dfd",
     "rust/gen/Cargo.toml": "sha256:c01c54ed4c18b431815af8668b155f35e7d41084aa7f97aff7ce01dfbcb7f9b3",
     "rust/gen/build.rs": "sha256:ef0170542199cbb707b78fb06eac8978eceb6bf64e710aabd54943134da4a62c",
     "rust/gen/src/dagr_runtime.rs": "sha256:28be82c1b570b7bdc3c9db9b7c90a18bc8e98c55cb7edd161e580dd39f57bab1",
     "rust/gen/src/lib.rs": "sha256:2192a11e5a5651ce8465348740e2605c7d553204ff537acaf7d99f17bdb56a15",
-    "rust/gen/src/log_record_log_sink.rs": "sha256:aee589685702102ce867be28c39afbdc6930c5441745e5f51c0191283aa47320",
-    "rust/gen/src/metric_log_sink.rs": "sha256:1facccab212be203bda15c4618446abfc6f6a4d983bb2a1569746a57d4c0e8dd",
+    "rust/gen/src/log_record_log_sink.rs": "sha256:ea81c3cb16935cb279ec66cb075e7de4fc0d29aac03cadebbf0ca3ad64d765b7",
+    "rust/gen/src/metric_log_sink.rs": "sha256:f34c26b204aadcb73244c5456e2190c8be8b2e3bea9aa86cfcc9e912fceedf4c",
     "rust/gen/src/otlp_logs.rs": "sha256:610ed3abd95aaccd79ed89c96eb7a51c128b979d4ce7730ef28c6adbae274529",
-    "rust/gen/src/otlp_logs_arrow.rs": "sha256:cd2857cc7c669a2d2acc5fd865c22d0faf3f2b19b2e6a86e5d9747d53e558163",
+    "rust/gen/src/otlp_logs_arrow.rs": "sha256:e06201e12ef72b697b88eff1192c423272950f03b8606f1a8f445335b1121638",
     "rust/gen/src/otlp_logs_core.rs": "sha256:6984e96ef9fb383da67accc38e0c6489bd6d3aefb7be95b7b0543a187779692c",
     "rust/gen/src/otlp_logs_lazy.rs": "sha256:b225ae500b9c4b0cc1088ad37f07b6739346eb97d66eb45876737a934447ce7c",
     "rust/gen/src/otlp_metrics.rs": "sha256:34801fff1dd6d236c6e7bc63430ccbed73bb571855a1f2db75afffd3dde57468",
-    "rust/gen/src/otlp_metrics_arrow.rs": "sha256:10741367bd1203b8602c06615f0e1b0e4234a30fcd8456b5836107ea494b6f1f",
+    "rust/gen/src/otlp_metrics_arrow.rs": "sha256:e64ff3dd0ad7412a0e61481cb90e858bb6bb2688811a64ba0f33e4c2d0cfae1a",
     "rust/gen/src/otlp_metrics_core.rs": "sha256:8949b6f4bf585569f18e752b9b1323e3c213f0cc2a7addcd3ad10c71bc99bbd3",
     "rust/gen/src/otlp_metrics_lazy.rs": "sha256:7afc88d9f47ae3a824374ce9c59e0be576e98b181e3a971109d8214b471d3a52",
     "rust/gen/src/otlp_profiles.rs": "sha256:bac7b1443a4eab25b684106189ab66e50e5cff037ca60134866f406c28444832",
-    "rust/gen/src/otlp_profiles_arrow.rs": "sha256:d03cce3d950f8b47b5f0da5be39d2d08bd4407f34ae0d982f84c2f88139bdade",
+    "rust/gen/src/otlp_profiles_arrow.rs": "sha256:981d907aba3c4da139d1edc11eb510c167fabed9b6847796c81b9d794f62d2a4",
     "rust/gen/src/otlp_profiles_core.rs": "sha256:c65a0663f499ab65c35db86b5bed9f5e50c8adcaf4f65ea159b00bfedb37425b",
-    "rust/gen/src/otlp_profiles_graph.rs": "sha256:8843045bd132a250694a0e90071711a1afaa72e25b61ac7e2d50188ad46a6f81",
-    "rust/gen/src/otlp_profiles_graph_arrow.rs": "sha256:4e7a5968d31b6cbac1ebb99e16099aa4bbf4dc59526ff097e8781b4a13c08aae",
-    "rust/gen/src/otlp_profiles_graph_lazy.rs": "sha256:ecf69eab4691d3d98fbe29e48a71eda72a6f567d12edd41072f0aa19014f2ebc",
+    "rust/gen/src/otlp_profiles_graph.rs": "sha256:d359b9a83552ab688b6a461cd2569f2aa238416b760b31f8be0aa51bc4eae4a0",
+    "rust/gen/src/otlp_profiles_graph_arrow.rs": "sha256:0b514d2b1a898d8cdc1d4b8a5364706c1a4e67abd9a63f818deab6810b54cd47",
+    "rust/gen/src/otlp_profiles_graph_lazy.rs": "sha256:be06948582ed04be3dc1a90c7c563453ea11c7a2b9709d2a8a92aa685ceecfd2",
     "rust/gen/src/otlp_profiles_lazy.rs": "sha256:2d155b1acd05895a6118c057c018d2de8d2821463e3181ffd9e0c54e56f90e6d",
     "rust/gen/src/otlp_traces.rs": "sha256:8a706d1613ff21d71f48ab27b7a4c752b09d709b2ec6bf2caa53c4ce86dc1c2d",
-    "rust/gen/src/otlp_traces_arrow.rs": "sha256:867139565f316322b012fabf57f89b15e5c13fb057a79fe4085d282a8b1b351b",
+    "rust/gen/src/otlp_traces_arrow.rs": "sha256:90a338a08e386a158d1908702ec24bed6d65b11b884d63a09479a6eef66d35c3",
     "rust/gen/src/otlp_traces_core.rs": "sha256:7d1a354d75dbc51fd77887db22dda297d83c16917604025464e26ee24496c9df",
     "rust/gen/src/otlp_traces_lazy.rs": "sha256:37ab2a88e766402428064091d977262cfcb33cb3fa1b3e924bbeae456dce115a",
-    "rust/gen/src/profile_log_sink.rs": "sha256:02086576f0bfa92de6b33d432f4b9e0be78aa4ea15b1419016a19d1cbe02fd3e",
-    "rust/gen/src/span_log_sink.rs": "sha256:22dadd2836d6cc9a8701be21ddc9d7c8aacb30cb44b43ade43d7059d32a8dde4"
+    "rust/gen/src/profile_log_sink.rs": "sha256:94fa83170a0e659547475d7c75d6f547f4946506d2d38d9da9adfc322d83334f",
+    "rust/gen/src/span_log_sink.rs": "sha256:b940ddf4f85df0085b8cdbc51e9d7a5d7fa8caeae45155ce1e8ae250a1634f9a"
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-23T12:20:52.115152+00:00",
+    "generated_at": "2026-09-23T14:27:27.280143+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.0"
   },

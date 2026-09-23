@@ -5,6 +5,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pprofile"
 
 	g "otlpgen/otlpprofiles"
+	"otlpgen/profilelog"
 )
 
 // ToProfiles materialises an OtlpProfiles buffer into pdata, for handing off to an
@@ -14,12 +15,26 @@ func ToProfiles(buf []byte) (pprofile.Profiles, error) {
 	if err != nil {
 		return pprofile.Profiles{}, err
 	}
+	dc, ok := root.Dictionary()
+	return putProfiles(root.ResourceProfilesIter(), dc, ok), nil
+}
+
+// FromRecord materialises one ProfileLog spool record (spool.Batch.Record) into pdata. The
+// record holds the batch's ResourceProfiles inline, read in place with the same accessors
+// ToProfiles uses — profilelog aliases them — so the two share one body.
+func FromRecord(record []byte) pprofile.Profiles {
+	a := profilelog.NewBatchAccessor(record, 0)
+	dc, ok := a.Dictionary()
+	return putProfiles(a.ResourceProfilesIter(), dc, ok)
+}
+
+func putProfiles[I any, P cursor[I, g.ResourceProfilesAccessor]](it I, dict g.ProfilesDictionaryAccessor, hasDict bool) pprofile.Profiles {
+	c := P(&it)
 	pd := pprofile.NewProfiles()
-	if dc, ok := root.Dictionary(); ok {
-		putDictionary(pd.Dictionary(), dc)
+	if hasDict {
+		putDictionary(pd.Dictionary(), dict)
 	}
-	it := root.ResourceProfilesIter()
-	for src, ok := it.Next(); ok; src, ok = it.Next() {
+	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		rp := pd.ResourceProfiles().AppendEmpty()
 		if r, ok := src.Resource(); ok {
 			putResource(rp.Resource(), r)
@@ -42,7 +57,7 @@ func ToProfiles(buf []byte) (pprofile.Profiles, error) {
 			}
 		}
 	}
-	return pd, nil
+	return pd
 }
 
 // int32s / int64s / uint64s copy a scalar array through its cursor.

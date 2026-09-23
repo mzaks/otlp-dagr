@@ -332,7 +332,7 @@ func putValue(dst pcommon.Value, v regularValue, depth int) {
 			if key, ok := kv.Key(); ok {
 				slot := m.PutEmpty(key)
 				if inner, ok := kv.Value(); ok {
-					putPackedValue(slot, inner, depth+1)
+					putValue(slot, inner, depth+1)
 				}
 			}
 		}
@@ -356,36 +356,8 @@ func putKVs(dst pcommon.Map, it kvCursor) {
 		}
 		slot := dst.PutEmpty(key)
 		if v, ok := kv.Value(); ok {
-			putPackedValue(slot, v, 0)
+			putValue(slot, v, 0)
 		}
-	}
-}
-
-func putPackedValue(dst pcommon.Value, v g.AnyValuePackedView, depth int) {
-	if depth >= MaxValueDepth {
-		return
-	}
-	switch v.Tag() {
-	case g.AnyValueTagStringValue:
-		dst.SetStr(v.StringValue())
-	case g.AnyValueTagIntValue:
-		dst.SetInt(v.IntValue())
-	case g.AnyValueTagDoubleValue:
-		dst.SetDouble(v.DoubleValue())
-	case g.AnyValueTagBoolValue:
-		dst.SetBool(v.BoolValue())
-	case g.AnyValueTagBytesValue:
-		dst.SetEmptyBytes().FromRaw(v.BytesValue())
-	case g.AnyValueTagArrayValue:
-		s := dst.SetEmptySlice()
-		for e, present := range v.ArrayValue().All() {
-			slot := s.AppendEmpty()
-			if present {
-				putPackedValue(slot, e, depth+1)
-			}
-		}
-	case g.AnyValueTagKvlistValue:
-		putKVs(dst.SetEmptyMap(), ptr(v.KvlistValueIter()))
 	}
 }
 

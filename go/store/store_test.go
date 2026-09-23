@@ -22,8 +22,8 @@ func writeSpool(t testing.TB, sizes ...int) string {
 	var dst []byte
 	for i, n := range sizes {
 		td := fixture.TracesN(n)
-		dst = enc.BuildAppend(dst[:0], td)
-		if err := w.Append(uint64(1000+i), uint32(td.SpanCount()), dst); err != nil {
+		dst = enc.AppendRecord(dst[:0], uint64(1000+i), td)
+		if err := w.AppendRecord(dst); err != nil {
 			t.Fatalf("append %d: %v", i, err)
 		}
 	}
@@ -221,8 +221,8 @@ func TestRingKeepsNewestBatches(t *testing.T) {
 	var dst []byte
 	for i := 0; i < 12; i++ {
 		td := fixture.TracesN(3 + i)
-		dst = enc.BuildAppend(dst[:0], td)
-		if err := r.Append(uint64(2000+i), uint32(td.SpanCount()), dst); err != nil {
+		dst = enc.AppendRecord(dst[:0], uint64(2000+i), td)
+		if err := r.Append(dst); err != nil {
 			t.Fatalf("append %d: %v", i, err)
 		}
 	}
@@ -281,7 +281,8 @@ func TestRingKeepsNewestBatches(t *testing.T) {
 func TestRingKeepsWholeRecordsUnderAByteBudget(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ring.dagr")
 	enc := pdatabridge.NewStreamBuilder()
-	one := enc.BuildAppend(nil, fixture.TracesN(50))
+	td50 := fixture.TracesN(50)
+	one := enc.AppendRecord(nil, 3000, td50)
 	budget := int64(len(one)) * 3
 
 	r, _, err := store.OpenRing(path, store.RingOptions{MaxBytes: budget})
@@ -289,7 +290,7 @@ func TestRingKeepsWholeRecordsUnderAByteBudget(t *testing.T) {
 		t.Fatalf("open ring: %v", err)
 	}
 	for i := 0; i < 10; i++ {
-		if err := r.Append(uint64(3000+i), 50, one); err != nil {
+		if err := r.Append(enc.AppendRecord(nil, uint64(3000+i), td50)); err != nil {
 			t.Fatalf("append %d: %v", i, err)
 		}
 	}
@@ -330,7 +331,7 @@ func TestRingKeepsWholeRecordsUnderAByteBudget(t *testing.T) {
 func TestRingResumesAcrossRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ring.dagr")
 	enc := pdatabridge.NewStreamBuilder()
-	one := enc.BuildAppend(nil, fixture.TracesN(5))
+	td5 := fixture.TracesN(5)
 
 	for run := 0; run < 3; run++ {
 		r, rec, err := store.OpenRing(path, store.RingOptions{MaxBatches: 10})
@@ -340,7 +341,7 @@ func TestRingResumesAcrossRestart(t *testing.T) {
 		if run > 0 && rec.Fresh {
 			t.Fatalf("run %d treated an existing ring as fresh", run)
 		}
-		if err := r.Append(uint64(4000+run), 5, one); err != nil {
+		if err := r.Append(enc.AppendRecord(nil, uint64(4000+run), td5)); err != nil {
 			t.Fatalf("run %d append: %v", run, err)
 		}
 		if err := r.Close(); err != nil {

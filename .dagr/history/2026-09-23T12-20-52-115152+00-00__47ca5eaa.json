@@ -1,0 +1,4361 @@
+{
+  "library": {
+    "graphs": {
+      "OtlpCommon": {
+        "header": null,
+        "imports": [],
+        "name": "OtlpCommon",
+        "node_types": [
+          {
+            "capacity": 16,
+            "kind": "union",
+            "name": "AnyValue",
+            "types": [
+              {
+                "name": "string_value",
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "name": "bool_value",
+                "type": {
+                  "kind": "bool"
+                }
+              },
+              {
+                "name": "int_value",
+                "type": {
+                  "kind": "i64"
+                }
+              },
+              {
+                "name": "double_value",
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "name": "array_value",
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "AnyValue"
+                  },
+                  "kind": "arrayWithOptionals"
+                }
+              },
+              {
+                "name": "kvlist_value",
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "name": "bytes_value",
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "name": "string_value_strindex",
+                "type": {
+                  "kind": "i32"
+                }
+              }
+            ]
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "key",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "value",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "AnyValue"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "key_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "KeyValue",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "version",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "InstrumentationScope",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "type",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "id_keys",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "utf8"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "description_keys",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "utf8"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "EntityRef",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "entity_refs",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "EntityRef"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Resource",
+            "packed": true,
+            "prefabs": {}
+          }
+        ],
+        "root_type": null
+      },
+      "OtlpLogs": {
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpCommon",
+            "package_name": null
+          }
+        ],
+        "name": "OtlpLogs",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource_logs",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceLogs"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "LogsData",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Resource"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope_logs",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ScopeLogs"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ResourceLogs",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "InstrumentationScope"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "log_records",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "LogRecord"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ScopeLogs",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "as_bitset": false,
+            "capacity": 255,
+            "cases": {
+              "0": "SEVERITY_NUMBER_UNSPECIFIED",
+              "1": "SEVERITY_NUMBER_TRACE",
+              "10": "SEVERITY_NUMBER_INFO2",
+              "11": "SEVERITY_NUMBER_INFO3",
+              "12": "SEVERITY_NUMBER_INFO4",
+              "13": "SEVERITY_NUMBER_WARN",
+              "14": "SEVERITY_NUMBER_WARN2",
+              "15": "SEVERITY_NUMBER_WARN3",
+              "16": "SEVERITY_NUMBER_WARN4",
+              "17": "SEVERITY_NUMBER_ERROR",
+              "18": "SEVERITY_NUMBER_ERROR2",
+              "19": "SEVERITY_NUMBER_ERROR3",
+              "2": "SEVERITY_NUMBER_TRACE2",
+              "20": "SEVERITY_NUMBER_ERROR4",
+              "21": "SEVERITY_NUMBER_FATAL",
+              "22": "SEVERITY_NUMBER_FATAL2",
+              "23": "SEVERITY_NUMBER_FATAL3",
+              "24": "SEVERITY_NUMBER_FATAL4",
+              "3": "SEVERITY_NUMBER_TRACE3",
+              "4": "SEVERITY_NUMBER_TRACE4",
+              "5": "SEVERITY_NUMBER_DEBUG",
+              "6": "SEVERITY_NUMBER_DEBUG2",
+              "7": "SEVERITY_NUMBER_DEBUG3",
+              "8": "SEVERITY_NUMBER_DEBUG4",
+              "9": "SEVERITY_NUMBER_INFO"
+            },
+            "kind": "enum",
+            "name": "SeverityNumber"
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "observed_time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "severity_number",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "SeverityNumber"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "severity_text",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "body",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "AnyValue"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "event_name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "LogRecord",
+            "packed": true,
+            "prefabs": {}
+          }
+        ],
+        "root_type": {
+          "kind": "ref",
+          "ref": "LogsData"
+        }
+      },
+      "OtlpMetrics": {
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpCommon",
+            "package_name": null
+          }
+        ],
+        "name": "OtlpMetrics",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource_metrics",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceMetrics"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "MetricsData",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Resource"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope_metrics",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ScopeMetrics"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ResourceMetrics",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "InstrumentationScope"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "metrics",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Metric"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ScopeMetrics",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "as_bitset": false,
+            "capacity": 255,
+            "cases": {
+              "0": "AGGREGATION_TEMPORALITY_UNSPECIFIED",
+              "1": "AGGREGATION_TEMPORALITY_DELTA",
+              "2": "AGGREGATION_TEMPORALITY_CUMULATIVE"
+            },
+            "kind": "enum",
+            "name": "AggregationTemporality"
+          },
+          {
+            "capacity": 16,
+            "kind": "union",
+            "name": "MetricData",
+            "types": [
+              {
+                "name": "gauge",
+                "type": {
+                  "kind": "ref",
+                  "ref": "Gauge"
+                }
+              },
+              {
+                "name": "sum",
+                "type": {
+                  "kind": "ref",
+                  "ref": "Sum"
+                }
+              },
+              {
+                "name": "histogram",
+                "type": {
+                  "kind": "ref",
+                  "ref": "Histogram"
+                }
+              },
+              {
+                "name": "exponential_histogram",
+                "type": {
+                  "kind": "ref",
+                  "ref": "ExponentialHistogram"
+                }
+              },
+              {
+                "name": "summary",
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "SummaryDataPoint"
+                  },
+                  "kind": "array"
+                }
+              }
+            ]
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "description_text",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "unit",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "metadata",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "data",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "MetricData"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Metric",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "data_points",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "NumberDataPoint"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Gauge",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "data_points",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "NumberDataPoint"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "aggregation_temporality",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "AggregationTemporality"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "is_monotonic",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "bool"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Sum",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "data_points",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "HistogramDataPoint"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "aggregation_temporality",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "AggregationTemporality"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Histogram",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "data_points",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ExponentialHistogramDataPoint"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "aggregation_temporality",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "AggregationTemporality"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ExponentialHistogram",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "capacity": 2,
+            "kind": "union",
+            "name": "NumberValue",
+            "types": [
+              {
+                "name": "as_double",
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "name": "as_int",
+                "type": {
+                  "kind": "i64"
+                }
+              }
+            ]
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "start_time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "exemplars",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Exemplar"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "value",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "NumberValue"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "NumberDataPoint",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "start_time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "sum",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "bucket_counts",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "u64"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "explicit_bounds",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "f64"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "exemplars",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Exemplar"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "min",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "max",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "HistogramDataPoint",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "offset",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "bucket_counts",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "u64"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": true,
+            "kind": "node",
+            "name": "Buckets",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "start_time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "sum",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scale",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "zero_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "positive",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Buckets"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "negative",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Buckets"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "exemplars",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Exemplar"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "min",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "max",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "zero_threshold",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ExponentialHistogramDataPoint",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "quantile",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "value",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ValueAtQuantile",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "start_time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "sum",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "quantile_values",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ValueAtQuantile"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "SummaryDataPoint",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "filtered_attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "value",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "NumberValue"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Exemplar",
+            "packed": true,
+            "prefabs": {}
+          }
+        ],
+        "root_type": {
+          "kind": "ref",
+          "ref": "MetricsData"
+        }
+      },
+      "OtlpProfiles": {
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpCommon",
+            "package_name": null
+          }
+        ],
+        "name": "OtlpProfiles",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "mapping_table",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Mapping"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "location_table",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Location"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "function_table",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Function"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "link_table",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Link"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "string_table",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "utf8"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attribute_table",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValueAndUnit"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "stack_table",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Stack"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ProfilesDictionary",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource_profiles",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceProfiles"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dictionary",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "ProfilesDictionary"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ProfilesData",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Resource"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope_profiles",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ScopeProfiles"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ResourceProfiles",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "InstrumentationScope"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "profiles",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Profile"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ScopeProfiles",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "sample_type",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "ValueType"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "samples",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Sample"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "duration_nano",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "period_type",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "ValueType"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "period",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "profile_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "original_payload_format",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "original_payload",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attribute_indices",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "i32"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Profile",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Link",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "type_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "unit_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ValueType",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "stack_index",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attribute_indices",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "i32"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "link_index",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "values",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "i64"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "timestamps_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "inner": {
+                    "kind": "u64"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Sample",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "memory_start",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "memory_limit",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "file_offset",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "filename_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attribute_indices",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "i32"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Mapping",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "location_indices",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "i32"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Stack",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "mapping_index",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "address",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "lines",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Line"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attribute_indices",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "i32"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Location",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "function_index",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "line",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "column",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Line",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "system_name_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "filename_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "start_line",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Function",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "key_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "value",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "AnyValue"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "unit_strindex",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "KeyValueAndUnit",
+            "packed": true,
+            "prefabs": {}
+          }
+        ],
+        "root_type": {
+          "kind": "ref",
+          "ref": "ProfilesData"
+        }
+      },
+      "OtlpProfilesGraph": {
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpCommon",
+            "package_name": null
+          }
+        ],
+        "name": "OtlpProfilesGraph",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource_profiles",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceProfiles"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ProfilesData",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Resource"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope_profiles",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ScopeProfiles"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ResourceProfiles",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "InstrumentationScope"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "profiles",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Profile"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ScopeProfiles",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "type",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "unit",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ValueType",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "sample_type",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "ValueType"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "samples",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Sample"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "duration_nano",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "period_type",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "ValueType"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "period",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "profile_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "original_payload_format",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "original_payload",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValueAndUnit"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Profile",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "stack",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Stack"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValueAndUnit"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "link",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Link"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "values",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "i64"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "timestamps_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "inner": {
+                    "kind": "u64"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Sample",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "locations",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Location"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Stack",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "mapping",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Mapping"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "address",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "lines",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Line"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValueAndUnit"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Location",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "function",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Function"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "line",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "column",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Line",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "system_name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "filename",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "start_line",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Function",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "memory_start",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "memory_limit",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "file_offset",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "filename",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValueAndUnit"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Mapping",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Link",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "key",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "value",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "AnyValue"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "unit",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "KeyValueAndUnit",
+            "packed": false,
+            "prefabs": {}
+          }
+        ],
+        "root_type": {
+          "kind": "ref",
+          "ref": "ProfilesData"
+        }
+      },
+      "OtlpTraces": {
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpCommon",
+            "package_name": null
+          }
+        ],
+        "name": "OtlpTraces",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource_spans",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ResourceSpans"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "TracesData",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "resource",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Resource"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope_spans",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "ScopeSpans"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ResourceSpans",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "scope",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "InstrumentationScope"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "spans",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Span"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "schema_url",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "ScopeSpans",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "as_bitset": false,
+            "capacity": 255,
+            "cases": {
+              "0": "SPAN_KIND_UNSPECIFIED",
+              "1": "SPAN_KIND_INTERNAL",
+              "2": "SPAN_KIND_SERVER",
+              "3": "SPAN_KIND_CLIENT",
+              "4": "SPAN_KIND_PRODUCER",
+              "5": "SPAN_KIND_CONSUMER"
+            },
+            "kind": "enum",
+            "name": "SpanKind"
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Event",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_state",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Link",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "trace_state",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "parent_span_id",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "data"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "flags",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "name",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "kind",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "SpanKind"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "start_time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "end_time_unix_nano",
+                "options": 8,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "attributes",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "KeyValue"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_attributes_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "events",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Event"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_events_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "links",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Link"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "dropped_links_count",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "status",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "Status"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Span",
+            "packed": true,
+            "prefabs": {}
+          },
+          {
+            "as_bitset": false,
+            "capacity": 255,
+            "cases": {
+              "0": "STATUS_CODE_UNSET",
+              "1": "STATUS_CODE_OK",
+              "2": "STATUS_CODE_ERROR"
+            },
+            "kind": "enum",
+            "name": "StatusCode"
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "message",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "utf8"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "code",
+                "options": 0,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "StatusCode"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Status",
+            "packed": true,
+            "prefabs": {}
+          }
+        ],
+        "root_type": {
+          "kind": "ref",
+          "ref": "TracesData"
+        }
+      }
+    },
+    "ir_version": 1,
+    "name": "otlp_dagr",
+    "schemas": [
+      {
+        "kind": "graph",
+        "name": "OtlpTraces"
+      },
+      {
+        "kind": "graph",
+        "name": "OtlpMetrics"
+      },
+      {
+        "kind": "graph",
+        "name": "OtlpLogs"
+      },
+      {
+        "kind": "graph",
+        "name": "OtlpProfiles"
+      },
+      {
+        "kind": "graph",
+        "name": "OtlpProfilesGraph"
+      },
+      {
+        "kind": "sink",
+        "name": "SpanLog"
+      },
+      {
+        "kind": "sink",
+        "name": "MetricLog"
+      },
+      {
+        "kind": "sink",
+        "name": "LogRecordLog"
+      },
+      {
+        "kind": "sink",
+        "name": "ProfileLog"
+      }
+    ],
+    "shared_buffers": {},
+    "sinks": {
+      "LogRecordLog": {
+        "doubly_linked": true,
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpLogs",
+            "package_name": null
+          }
+        ],
+        "meta_types": [],
+        "name": "LogRecordLog",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "received_unix_nano",
+                "options": 1,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "log_record_count",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "logs",
+                "options": 9,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "LogsData"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Batch",
+            "packed": false,
+            "prefabs": {}
+          }
+        ]
+      },
+      "MetricLog": {
+        "doubly_linked": true,
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpMetrics",
+            "package_name": null
+          }
+        ],
+        "meta_types": [],
+        "name": "MetricLog",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "received_unix_nano",
+                "options": 1,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "data_point_count",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "metrics",
+                "options": 9,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "MetricsData"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Batch",
+            "packed": false,
+            "prefabs": {}
+          }
+        ]
+      },
+      "ProfileLog": {
+        "doubly_linked": true,
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpProfiles",
+            "package_name": null
+          }
+        ],
+        "meta_types": [],
+        "name": "ProfileLog",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "received_unix_nano",
+                "options": 1,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "sample_count",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "profiles",
+                "options": 9,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "ProfilesData"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Batch",
+            "packed": false,
+            "prefabs": {}
+          }
+        ]
+      },
+      "SpanLog": {
+        "doubly_linked": true,
+        "header": null,
+        "imports": [
+          {
+            "graph": "OtlpTraces",
+            "package_name": null
+          }
+        ],
+        "meta_types": [],
+        "name": "SpanLog",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "received_unix_nano",
+                "options": 1,
+                "timestamp": {
+                  "epoch": "unix",
+                  "unit": "ns"
+                },
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "span_count",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "traces",
+                "options": 9,
+                "timestamp": null,
+                "type": {
+                  "kind": "ref",
+                  "ref": "TracesData"
+                }
+              }
+            ],
+            "frozen": false,
+            "kind": "node",
+            "name": "Batch",
+            "packed": false,
+            "prefabs": {}
+          }
+        ]
+      }
+    },
+    "wire_format_version": 1
+  },
+  "library_hash": "sha256:47ca5eaa7dbe0d8aa36617f653fbd666939524c4069327b9fa3235d249292f56",
+  "outputs": {
+    "go/gen/dagr/reader.go": "sha256:52241688c1535ab8ea98b014aebebe26e8a3baab174840afe07ea0d4e0231363",
+    "go/gen/dagr/writer.go": "sha256:ad1281ed85c2c251d3fbd7623b93d8cefef4b13bf163efa989cacd2734329ec0",
+    "go/gen/go.mod": "sha256:a31961fab517fcdc05aefcf74884d3f0c15eef029955a4e8c25b7a967a3509e9",
+    "go/gen/logrecordlog/log_record_log.go": "sha256:4ea4f79a1f0ba7b246c0c6cad0d49a3f09d1e42777991deb99313f7588d46b49",
+    "go/gen/metriclog/metric_log.go": "sha256:56564eb7c3212f020172bfedb60ea0a5c40df555aa85a43bc9b318d11dec2666",
+    "go/gen/otlplogs/otlp_logs.go": "sha256:2fac5cae630824c167615c425d7aef7a96c98d941f978601cecfc7113533a1b0",
+    "go/gen/otlplogs/otlp_logs_arena.go": "sha256:9ecc209f2ffdd09fc2dc26a0c8789d6f47631520ccf12da917f91b0d60c6cd94",
+    "go/gen/otlplogs/otlp_logs_serde.go": "sha256:aded01cb23afe6cc5e24758090c58046da3936a3ce3f3b62b5830c7e548f5bd8",
+    "go/gen/otlplogsdirect/otlp_logs.go": "sha256:8f8a7fcc36012d830468bb5eb15c06053301b50125886526e97b21cda51b0ee4",
+    "go/gen/otlpmetrics/otlp_metrics.go": "sha256:4f3f5868c518d86469d19e152642a5bfab5897436f1271d9edd25585caa4cea1",
+    "go/gen/otlpmetrics/otlp_metrics_arena.go": "sha256:e04008303bb60fcf4d283bd43339d20bb0f399bb7d1e6741cf14409dd89c0e46",
+    "go/gen/otlpmetrics/otlp_metrics_serde.go": "sha256:dc30b443122273ad14418a708be40b5f4ef2c1a93b8928504ebce3edc00605d7",
+    "go/gen/otlpmetricsdirect/otlp_metrics.go": "sha256:0024689646f4f5c6ea65b3dfcfc03e5979be51616aebc2ff31454ad93c84ce1c",
+    "go/gen/otlpprofiles/otlp_profiles.go": "sha256:717f412e3aee5858d431336458c5e81ea51ea1e1cee96925568e055b152b5020",
+    "go/gen/otlpprofiles/otlp_profiles_arena.go": "sha256:07ce79ab300b968512f90d3a6c451bb1e58f614380e5398b87545b3d241ca3e5",
+    "go/gen/otlpprofiles/otlp_profiles_serde.go": "sha256:b09ca4c80a32baf0b6bdb899cc0f465e75ae7f2e7e9cfc2f7033fb9390583e73",
+    "go/gen/otlpprofilesdirect/otlp_profiles.go": "sha256:c0deba9cf2df7674c54b6db94c7bc96f68d8a2cb4cd8e992c48f2c9ace974079",
+    "go/gen/otlpprofilesgraph/otlp_profiles_graph.go": "sha256:6457ae87699aa35b0e8b8eabf4c8aafa9ffe154b1d780f135225690ecd863d2c",
+    "go/gen/otlpprofilesgraph/otlp_profiles_graph_arena.go": "sha256:fef46cb9c1e18b2d8724f743dabfd5eed0f6658826d651c34065d8df27f605bd",
+    "go/gen/otlpprofilesgraph/otlp_profiles_graph_serde.go": "sha256:7674cdab7545e4f00754f47939d21c5f6668fb9f95a60850d71ebbc226ac6807",
+    "go/gen/otlptraces/otlp_traces.go": "sha256:e69d398d30f3f203e5ea68442d2812f38d84b3f91aa4a6044715a3617008c0c7",
+    "go/gen/otlptraces/otlp_traces_arena.go": "sha256:14dcfbd2f9153f4c7051d59ee7b9cc84e6db1c6f7ca7e250c8df9a976716c201",
+    "go/gen/otlptraces/otlp_traces_serde.go": "sha256:16ffdca0e57707653966d97eb2b42f088879aa20e0f536ccdb2feadd33cf1e43",
+    "go/gen/otlptracesdirect/otlp_traces.go": "sha256:5abf64c69bd60e7473e7e6b616937361c519042bd9a42caded140718349650d6",
+    "go/gen/profilelog/profile_log.go": "sha256:d103b6a22aa3d8397aaf4b0fd384e46e1ab300beb0173388ace884c559d141b7",
+    "go/gen/spanlog/span_log.go": "sha256:667346e47e12d52349d4b104edb0953861359e492f0ecd97e67e503ed18b120c",
+    "rust/gen/Cargo.toml": "sha256:c01c54ed4c18b431815af8668b155f35e7d41084aa7f97aff7ce01dfbcb7f9b3",
+    "rust/gen/build.rs": "sha256:ef0170542199cbb707b78fb06eac8978eceb6bf64e710aabd54943134da4a62c",
+    "rust/gen/src/dagr_runtime.rs": "sha256:28be82c1b570b7bdc3c9db9b7c90a18bc8e98c55cb7edd161e580dd39f57bab1",
+    "rust/gen/src/lib.rs": "sha256:2192a11e5a5651ce8465348740e2605c7d553204ff537acaf7d99f17bdb56a15",
+    "rust/gen/src/log_record_log_sink.rs": "sha256:aee589685702102ce867be28c39afbdc6930c5441745e5f51c0191283aa47320",
+    "rust/gen/src/metric_log_sink.rs": "sha256:1facccab212be203bda15c4618446abfc6f6a4d983bb2a1569746a57d4c0e8dd",
+    "rust/gen/src/otlp_logs.rs": "sha256:610ed3abd95aaccd79ed89c96eb7a51c128b979d4ce7730ef28c6adbae274529",
+    "rust/gen/src/otlp_logs_arrow.rs": "sha256:cd2857cc7c669a2d2acc5fd865c22d0faf3f2b19b2e6a86e5d9747d53e558163",
+    "rust/gen/src/otlp_logs_core.rs": "sha256:6984e96ef9fb383da67accc38e0c6489bd6d3aefb7be95b7b0543a187779692c",
+    "rust/gen/src/otlp_logs_lazy.rs": "sha256:b225ae500b9c4b0cc1088ad37f07b6739346eb97d66eb45876737a934447ce7c",
+    "rust/gen/src/otlp_metrics.rs": "sha256:34801fff1dd6d236c6e7bc63430ccbed73bb571855a1f2db75afffd3dde57468",
+    "rust/gen/src/otlp_metrics_arrow.rs": "sha256:10741367bd1203b8602c06615f0e1b0e4234a30fcd8456b5836107ea494b6f1f",
+    "rust/gen/src/otlp_metrics_core.rs": "sha256:8949b6f4bf585569f18e752b9b1323e3c213f0cc2a7addcd3ad10c71bc99bbd3",
+    "rust/gen/src/otlp_metrics_lazy.rs": "sha256:7afc88d9f47ae3a824374ce9c59e0be576e98b181e3a971109d8214b471d3a52",
+    "rust/gen/src/otlp_profiles.rs": "sha256:bac7b1443a4eab25b684106189ab66e50e5cff037ca60134866f406c28444832",
+    "rust/gen/src/otlp_profiles_arrow.rs": "sha256:d03cce3d950f8b47b5f0da5be39d2d08bd4407f34ae0d982f84c2f88139bdade",
+    "rust/gen/src/otlp_profiles_core.rs": "sha256:c65a0663f499ab65c35db86b5bed9f5e50c8adcaf4f65ea159b00bfedb37425b",
+    "rust/gen/src/otlp_profiles_graph.rs": "sha256:8843045bd132a250694a0e90071711a1afaa72e25b61ac7e2d50188ad46a6f81",
+    "rust/gen/src/otlp_profiles_graph_arrow.rs": "sha256:4e7a5968d31b6cbac1ebb99e16099aa4bbf4dc59526ff097e8781b4a13c08aae",
+    "rust/gen/src/otlp_profiles_graph_lazy.rs": "sha256:ecf69eab4691d3d98fbe29e48a71eda72a6f567d12edd41072f0aa19014f2ebc",
+    "rust/gen/src/otlp_profiles_lazy.rs": "sha256:2d155b1acd05895a6118c057c018d2de8d2821463e3181ffd9e0c54e56f90e6d",
+    "rust/gen/src/otlp_traces.rs": "sha256:8a706d1613ff21d71f48ab27b7a4c752b09d709b2ec6bf2caa53c4ce86dc1c2d",
+    "rust/gen/src/otlp_traces_arrow.rs": "sha256:867139565f316322b012fabf57f89b15e5c13fb057a79fe4085d282a8b1b351b",
+    "rust/gen/src/otlp_traces_core.rs": "sha256:7d1a354d75dbc51fd77887db22dda297d83c16917604025464e26ee24496c9df",
+    "rust/gen/src/otlp_traces_lazy.rs": "sha256:37ab2a88e766402428064091d977262cfcb33cb3fa1b3e924bbeae456dce115a",
+    "rust/gen/src/profile_log_sink.rs": "sha256:02086576f0bfa92de6b33d432f4b9e0be78aa4ea15b1419016a19d1cbe02fd3e",
+    "rust/gen/src/span_log_sink.rs": "sha256:22dadd2836d6cc9a8701be21ddc9d7c8aacb30cb44b43ade43d7059d32a8dde4"
+  },
+  "provenance": {
+    "command": "dagr build",
+    "generated_at": "2026-09-23T12:20:52.115152+00:00",
+    "host": null,
+    "tool_version": "dagr 2026.9.0"
+  },
+  "receipt_version": 1,
+  "targets": [
+    {
+      "exclude": [],
+      "features": [],
+      "lang": "go",
+      "layout": "package-per-graph",
+      "out": "go/gen",
+      "package": "otlpgen"
+    },
+    {
+      "exclude": [],
+      "features": [
+        "arrow",
+        "lazy"
+      ],
+      "lang": "rust",
+      "layout": "crate",
+      "out": "rust/gen",
+      "package": null
+    }
+  ]
+}

@@ -18,7 +18,7 @@ in one Go package. The import buys one declaration in THIS file, not one type in
 generated code — the wire is the same either way, since a packed field is addressed by
 its position and never by a type id.
 
-LAYOUT: every transpiled message is `packed`, deliberately — see
+LAYOUT: every transpiled message is stored `packed`, deliberately — see
 `spec/38-otlp-on-dagr.md` §2.3 in the Dagr repo. `frozen`/`frozen+packed` is smaller
 gzipped (0.97x vs 1.00x protobuf) and reads 1.8x faster, but it is *positional*: no
 field tag to skip, no unknown-field tail, and therefore no compatibility at all — not
@@ -96,6 +96,13 @@ from dagr.config import Library, Go, Rust  # Swift, TypeScript, Mojo, Odin, Pyth
 # ── Shared: common.proto + resource.proto ─────────────────────────────────────
 #
 # No root: nothing serializes an `OtlpCommon` on its own. It exists to be imported.
+#
+# No layout either: these nodes are declared REGULAR and take the layout of whoever
+# holds them, because packed propagates downward (`spec/16` §3). Under the four packed
+# signals they are packed — byte-identical to declaring them so, and read through the
+# generated `{Node}PackedAccessor` — while under OtlpProfilesGraph's regular nodes they
+# are vtable nodes like their parents, and a shared Resource is stored once. Declaring
+# them `packed` here had forced the packed layout on every importer, whatever it chose.
 OtlpCommon = DataGraph(
     'OtlpCommon',
     node_types=[
@@ -127,24 +134,24 @@ OtlpCommon = DataGraph(
             'key' >> t.utf8,
             'value' >> t.ref("AnyValue"),
             'key_strindex' >> t.i32,
-        ], packed=True),
+        ]),
         Node('InstrumentationScope', fields=[
             'name' >> t.utf8,
             'version' >> t.utf8,
             'attributes' >> t.ref("KeyValue").array,
             'dropped_attributes_count' >> t.u32,
-        ], packed=True),
+        ]),
         Node('EntityRef', fields=[
             'schema_url' >> t.utf8,
             'type' >> t.utf8,
             'id_keys' >> t.utf8.array,
             'description_keys' >> t.utf8.array,
-        ], packed=True),
+        ]),
         Node('Resource', fields=[
             'attributes' >> t.ref("KeyValue").array,
             'dropped_attributes_count' >> t.u32,
             'entity_refs' >> t.ref("EntityRef").array,
-        ], packed=True),
+        ]),
     ],
 )
 
@@ -548,7 +555,8 @@ OtlpProfiles = DataGraph(
 # Every node that is shared, or lies on a path to one, is REGULAR (vtable), because a
 # packed parent re-inlines its children and would undo the sharing. That rules out the
 # direct builder (spec/33 §3 admits trees only): this graph encodes through the arena.
-# ValueType is never shared, so it stays packed and inline. Names follow the proto so the
+# ValueType is never shared, so it stays packed and inline. The imported OtlpCommon
+# nodes declare no layout, so here they are regular like their parents. Names follow the proto so the
 # two graphs read side by side; they never meet — separate graph, separate Go package.
 #
 # The bridge translates indices to references on the way in and rebuilds the dictionary
@@ -647,26 +655,25 @@ OtlpProfilesGraph = DataGraph(
 # multi-GB spool forward, and a half-written tail is detectable rather than silently
 # truncating the stream (`spec/38` §6.1).
 #
-# The batch is carried as a `raw` EMBEDDED GRAPH (`spec/18` §11), not as a flattened
-# record.  A `raw` sink field must target an ImportedType — a node from an external
-# DataGraph, never a sink-local node — because the leaf must be serialized in the target
-# graph's OWN format (cycles, dedup, alignment), which only a real graph has.  The
-# consequences are exactly what an exporter/receiver pair wants:
-#
-#   * the exporter's job is "frame and append" — the bytes the direct builder produced are
-#     stored verbatim, so exporter output is byte-identical to the builder's output;
-#   * the receiver gets the blob back as a sub-slice of the mapped file, so forwarding a
-#     batch untouched costs no copy and no decode (`spec/38` §5.2);
-#   * the leaf is a genuine standalone Dagr buffer — it pops back out and reads through
-#     its graph's normal readers, including `dagr graph-explorer`.
+# The batch is INLINE: a record holds the signal's top-level array directly
+# (`resource_spans`, ... — and profiles' `dictionary` beside it), with no `TracesData`-style
+# wrapper node and no `raw` embedding. The referenced nodes are packed, and a packed node
+# is already relocatable, size-prefixed, pointer-free bytes — `raw` earns its keep only
+# for a NON-packed node (a vtable / cyclic graph) that has to be carried as a standalone
+# embedded graph. A record field that holds a graph's node is stored and read with that
+# graph's own generated code (Dagr `spec/11` §12): the Go sink package is a shim over
+# `otlptracesdirect.Put{N}` (write) and `otlptraces.{N}Accessor` (read), so the array's
+# bytes are exactly what the graph writes under a packed parent — frozen+packed
+# `Buckets` included — and the pdata bridges read a record with the accessors they
+# already use. Records are copied between spools verbatim (`AppendRaw`), with no decode.
 #
 # `received_unix_nano` and the item count are each sink's OWN fields, and they are the
 # whole point of the envelope: a reverse reader answers "the last N batches, m items" by
-# reading two packed scalars per record and never opening the blob at all.
+# reading two packed scalars per record and never touching the batch itself.
+# `received_unix_nano` is `raw` for the same reason the graphs' timestamps are.
 #
 # ONE SPOOL PER SIGNAL, not one spool with a record type per signal: a collector exporter
-# is per signal type, so is the queue behind it, and `SpanLog` stays byte-identical to
-# the spools written before metrics/logs/profiles existed. The count is the unit each
+# is per signal type, and so is the queue behind it. The count is the unit each
 # signal's pdata counts in (`SpanCount`, `DataPointCount`, `LogRecordCount`,
 # `SampleCount`).
 SpanLog = DataSink(
@@ -675,9 +682,9 @@ SpanLog = DataSink(
     doubly_linked=True,
     node_types=[
         Node('Batch', fields=[
-            'received_unix_nano' >> t.u64 >> required >> timestamp(unit='ns'),
+            'received_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),
             'span_count' >> t.u32 >> required,
-            'traces' >> t.ref("TracesData") >> raw >> required,
+            'resource_spans' >> t.ref("ResourceSpans").array >> required,
         ]),
     ],
 )
@@ -688,9 +695,9 @@ MetricLog = DataSink(
     doubly_linked=True,
     node_types=[
         Node('Batch', fields=[
-            'received_unix_nano' >> t.u64 >> required >> timestamp(unit='ns'),
+            'received_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),
             'data_point_count' >> t.u32 >> required,
-            'metrics' >> t.ref("MetricsData") >> raw >> required,
+            'resource_metrics' >> t.ref("ResourceMetrics").array >> required,
         ]),
     ],
 )
@@ -701,9 +708,9 @@ LogRecordLog = DataSink(
     doubly_linked=True,
     node_types=[
         Node('Batch', fields=[
-            'received_unix_nano' >> t.u64 >> required >> timestamp(unit='ns'),
+            'received_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),
             'log_record_count' >> t.u32 >> required,
-            'logs' >> t.ref("LogsData") >> raw >> required,
+            'resource_logs' >> t.ref("ResourceLogs").array >> required,
         ]),
     ],
 )
@@ -714,9 +721,10 @@ ProfileLog = DataSink(
     doubly_linked=True,
     node_types=[
         Node('Batch', fields=[
-            'received_unix_nano' >> t.u64 >> required >> timestamp(unit='ns'),
+            'received_unix_nano' >> t.u64 >> raw >> required >> timestamp(unit='ns'),
             'sample_count' >> t.u32 >> required,
-            'profiles' >> t.ref("ProfilesData") >> raw >> required,
+            'resource_profiles' >> t.ref("ResourceProfiles").array >> required,
+            'dictionary' >> t.ref("ProfilesDictionary"),
         ]),
     ],
 )

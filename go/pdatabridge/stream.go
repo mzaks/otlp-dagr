@@ -58,6 +58,41 @@ func (w *StreamBuilder) BuildAppend(dst []byte, td ptrace.Traces) []byte {
 	return b.AppendTo(dst)
 }
 
+// AppendRecord encodes td as the content of one SpanLog `Batch` record — what
+// spool.Writer.AppendRecord takes — into dst, in the same single pdata pass as
+// BuildAppend. The record holds the ResourceSpans array inline, so only the envelope
+// around it differs from a TracesData buffer; TestStreamRecordMatches gates the bytes
+// against the generated SpanLogWriter.AppendBatch.
+func (w *StreamBuilder) AppendRecord(dst []byte, receivedUnixNano uint64, td ptrace.Traces) []byte {
+	b := w.b
+	b.Reset()
+	buf, i := b.Take()
+	before := len(buf) - i
+	// resource_spans: field 2, a required packed node array (tag 2<<1|1, sized)
+	rss := td.ResourceSpans()
+	n := rss.Len()
+	a := len(buf) - i
+	for k := n - 1; k >= 0; k-- {
+		buf, i = w.putResourceSpans(rss.At(k), b, buf, i)
+	}
+	buf, i = dagr.PutLEBAt(buf, i, uint64(n))
+	buf, i = dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-a))
+	buf, i = dagr.PutLEBAt(buf, i, 5)
+	// span_count: field 1, u32 — LEB when it is shorter than the fixed width
+	if c := uint64(uint32(td.SpanCount())); dagr.LebLength(c) < 4 {
+		buf, i = dagr.PutLEBTaggedAt(buf, i, c, 2)
+	} else {
+		buf, i = dagr.PutFixedAt(buf, i, c, 4)
+		buf, i = dagr.PutLEBAt(buf, i, 3)
+	}
+	// received_unix_nano: field 0, `raw` u64 — always fixed width
+	buf, i = dagr.PutFixedAt(buf, i, receivedUnixNano, 8)
+	buf, i = dagr.PutLEBAt(buf, i, 1)
+	buf, i = dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
+	b.Put(buf, i)
+	return b.AppendTo(dst)
+}
+
 func (w *StreamBuilder) putTraces(td ptrace.Traces, b *dagr.Builder, buf []byte, i int) ([]byte, int) {
 	before := len(buf) - i
 	rss := td.ResourceSpans()

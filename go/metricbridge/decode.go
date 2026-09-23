@@ -4,6 +4,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
+	"otlpgen/metriclog"
 	g "otlpgen/otlpmetrics"
 )
 
@@ -14,9 +15,20 @@ func ToMetrics(buf []byte) (pmetric.Metrics, error) {
 	if err != nil {
 		return pmetric.Metrics{}, err
 	}
+	return putMetrics(root.ResourceMetricsIter()), nil
+}
+
+// FromRecord materialises one MetricLog spool record (spool.Batch.Record) into pdata. The
+// record holds the batch's ResourceMetrics inline, read in place with the same accessors
+// ToMetrics uses — metriclog aliases them — so the two share one body.
+func FromRecord(record []byte) pmetric.Metrics {
+	return putMetrics(metriclog.NewBatchAccessor(record, 0).ResourceMetricsIter())
+}
+
+func putMetrics[I any, P cursor[I, g.ResourceMetricsAccessor]](it I) pmetric.Metrics {
+	c := P(&it)
 	md := pmetric.NewMetrics()
-	it := root.ResourceMetricsIter()
-	for src, ok := it.Next(); ok; src, ok = it.Next() {
+	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		rm := md.ResourceMetrics().AppendEmpty()
 		if r, ok := src.Resource(); ok {
 			putResource(rm.Resource(), r)
@@ -39,7 +51,7 @@ func ToMetrics(buf []byte) (pmetric.Metrics, error) {
 			}
 		}
 	}
-	return md, nil
+	return md
 }
 
 func putMetric(dst pmetric.Metric, src g.MetricAccessor) {

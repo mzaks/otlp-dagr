@@ -33,9 +33,9 @@ func newExporter(t testing.TB, cfg *dagrfileexporter.Config) exporter.Traces {
 }
 
 // Gate 1 (spec/38 §6.1.1): what the exporter component writes is byte for byte what
-// pdatabridge.StreamBuilder produces for the same batch. The record carries the batch as
-// a `raw` embedded graph, so "frame and append" has to mean exactly that — if the
-// exporter ever re-encoded, this is where it would show.
+// pdatabridge.StreamBuilder produces for the same batch — the record content, with the
+// batch's ResourceSpans inline. If the exporter ever re-encoded or reframed, this is
+// where it would show.
 func TestExporterWritesTheBuilderOutputVerbatim(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spans.dagr")
 	e := newExporter(t, &dagrfileexporter.Config{Path: path})
@@ -44,10 +44,8 @@ func TestExporterWritesTheBuilderOutputVerbatim(t *testing.T) {
 	}
 
 	batches := []ptrace.Traces{fixture.TracesN(500), fixture.TracesN(3), fixture.TracesN(64)}
-	want := make([][]byte, len(batches))
 	ref := pdatabridge.NewStreamBuilder()
 	for i, td := range batches {
-		want[i] = ref.BuildAppend(nil, td)
 		if err := e.ConsumeTraces(context.Background(), td); err != nil {
 			t.Fatalf("consume %d: %v", i, err)
 		}
@@ -62,11 +60,13 @@ func TestExporterWritesTheBuilderOutputVerbatim(t *testing.T) {
 	}
 	i := 0
 	if err := r.Forward(func(b spool.Batch) bool {
-		if i >= len(want) {
-			t.Fatalf("spool holds more than %d records", len(want))
+		if i >= len(batches) {
+			t.Fatalf("spool holds more than %d records", len(batches))
 		}
-		if !bytes.Equal(b.Payload, want[i]) {
-			t.Fatalf("record %d: %d bytes on disk, %d from the builder", i, len(b.Payload), len(want[i]))
+		// the exporter stamps the receive time, so the reference encodes with the same one
+		want := ref.AppendRecord(nil, b.ReceivedUnixNano, batches[i])
+		if !bytes.Equal(b.Record, want) {
+			t.Fatalf("record %d: %d bytes on disk, %d from the builder", i, len(b.Record), len(want))
 		}
 		if got, expect := b.Count, uint32(batches[i].SpanCount()); got != expect {
 			t.Fatalf("record %d: envelope says %d spans, batch has %d", i, got, expect)
@@ -76,8 +76,8 @@ func TestExporterWritesTheBuilderOutputVerbatim(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("forward: %v", err)
 	}
-	if i != len(want) {
-		t.Fatalf("spool holds %d records, exported %d", i, len(want))
+	if i != len(batches) {
+		t.Fatalf("spool holds %d records, exported %d", i, len(batches))
 	}
 	if rec, err := spool.CheckTail(r.Bytes(), spool.Traces); err != nil || rec.Torn != 0 {
 		t.Fatalf("exporter left a torn spool: %s (%v)", rec, err)

@@ -202,9 +202,9 @@ func checkSpool(args []string) error {
 	fmt.Printf("%s spool %s: %d bytes, %d batches, %d items, %s\n",
 		sig, *path, len(r.Bytes()), fwdBatches, fwdSpans, tail)
 	if len(newest) > 0 {
-		fmt.Printf("  newest batch: %d items, received %s, %d embedded bytes\n",
+		fmt.Printf("  newest batch: %d items, received %s, %d record bytes\n",
 			newestSpans, time.Unix(0, int64(newest[0].ReceivedUnixNano)).Format(time.RFC3339Nano),
-			len(newest[0].Payload))
+			len(newest[0].Record))
 	}
 	if *batches != 0 && fwdBatches != *batches {
 		return fmt.Errorf("spool holds %d batches, expected %d", fwdBatches, *batches)

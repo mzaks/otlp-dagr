@@ -5,6 +5,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	g "otlpgen/otlptraces"
+	"otlpgen/spanlog"
 )
 
 // ToTraces materialises an OTLP-on-Dagr buffer into pdata, for handing off to an
@@ -20,9 +21,20 @@ func ToTraces(buf []byte) (ptrace.Traces, error) {
 	if err != nil {
 		return ptrace.Traces{}, err
 	}
+	return putTraces(root.ResourceSpansIter()), nil
+}
+
+// FromRecord materialises one SpanLog spool record (spool.Batch.Record) into pdata. The
+// record holds the batch's ResourceSpans inline, read in place with the same accessors
+// ToTraces uses — spanlog aliases them — so the two share one body.
+func FromRecord(record []byte) ptrace.Traces {
+	return putTraces(spanlog.NewBatchAccessor(record, 0).ResourceSpansIter())
+}
+
+func putTraces[I any, P cursor[I, g.ResourceSpansAccessor]](it I) ptrace.Traces {
+	c := P(&it)
 	td := ptrace.NewTraces()
-	it := root.ResourceSpansIter()
-	for src, ok := it.Next(); ok; src, ok = it.Next() {
+	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		rs := td.ResourceSpans().AppendEmpty()
 		if r, ok := src.Resource(); ok {
 			putResource(rs.Resource(), r)
@@ -48,7 +60,7 @@ func ToTraces(buf []byte) (ptrace.Traces, error) {
 			}
 		}
 	}
-	return td, nil
+	return td
 }
 
 func toPSpan(src g.SpanAccessor, sp ptrace.Span) {

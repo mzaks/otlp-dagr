@@ -5,8 +5,8 @@
 // It is the half of spec/38 that a collector pipeline cannot host. The type flowing
 // between receiver, processor and exporter is pdata, so a component that wants a field
 // must materialise the whole batch to get it (§5.3). Nothing here does: a spool record
-// carries its batch as a `raw` embedded graph, and the graph's generated accessors read
-// a field in place, out of the mapped file, allocating nothing. That is where the 29x
+// carries its batch's ResourceSpans inline, and the graph's generated accessors read a
+// field in place, out of the mapped file, allocating nothing. That is where the 29x
 // lives, and it lives in a service that reads the spool directly rather than in a
 // processor.
 //
@@ -20,7 +20,9 @@ package store
 import (
 	"fmt"
 
+	"otlpgen/dagr"
 	g "otlpgen/otlptraces"
+	"otlpgen/spanlog"
 
 	"otlpdagr/spool"
 )
@@ -45,7 +47,7 @@ type Span struct {
 // batches, not forty.
 type Stats struct {
 	RecordsWalked int // envelope records stepped over, newest-first
-	BatchesOpened int // embedded graphs actually parsed
+	BatchesOpened int // batches whose spans were actually read
 	SpansExamined int // spans handed to the caller's function
 	SpansBuffered int // spans iterated to reach them (>= SpansExamined)
 }
@@ -60,7 +62,7 @@ func (s Stats) String() string {
 type Query struct {
 	r *spool.Reader
 
-	// Validate opens each embedded batch through the graph's checking entry point.
+	// Validate walks each batch's ResourceSpans through the graph's checking entry point.
 	// Off by default: a spool this process wrote is not untrusted input. Turn it on for
 	// a spool that arrived from somewhere else — it walks the reachable graph once, so
 	// it is not free (spec/38 §10.1).
@@ -147,7 +149,7 @@ func (q *Query) walkBack(w Window, fn func(Span) bool) error {
 			return false
 		}
 		q.stats.RecordsWalked++
-		spans, err := q.fill(b.Payload)
+		spans, err := q.fill(b.Record)
 		if err != nil {
 			walkErr = err
 			return false
@@ -175,25 +177,33 @@ func (q *Query) walkBack(w Window, fn func(Span) bool) error {
 	return err
 }
 
-// fill parses one embedded batch and collects its span accessors into the reusable
-// scratch, in stored (oldest-first) order.
+// fill collects one record's span accessors into the reusable scratch, in stored
+// (oldest-first) order. The record holds the batch's ResourceSpans inline; with Validate
+// each is walked once first (otlptraces.ValidateResourceSpans) — what Open did for the
+// embedded buffer this record used to carry — so a malformed spool is an error, never a
+// panic.
 //
 // It iterates with SpansAll rather than SpansAt: a packed array's indexed access walks
 // the array to reach element i, so a loop of SpansAt is quadratic by construction. The
 // generated iterator is the O(1)-per-step cursor (spec/38 §10.2).
-func (q *Query) fill(blob []byte) ([]g.SpanAccessor, error) {
-	var root g.TracesDataAccessor
-	var err error
+func (q *Query) fill(record []byte) (out []g.SpanAccessor, err error) {
 	if q.Validate {
-		root, err = g.OpenOtlpTraces(blob)
-	} else {
-		root, err = g.OpenOtlpTracesUnchecked(blob)
+		defer func() {
+			if r := recover(); r != nil {
+				out, err = nil, dagr.ErrMalformed
+			}
+		}()
 	}
-	if err != nil {
-		return nil, err
+	a := spanlog.NewBatchAccessor(record, 0)
+	if q.Validate {
+		for rs := range a.ResourceSpansAll() {
+			if err := g.ValidateResourceSpans(rs); err != nil {
+				return nil, err
+			}
+		}
 	}
-	out := q.scratch[:0]
-	for rs := range root.ResourceSpansAll() {
+	out = q.scratch[:0]
+	for rs := range a.ResourceSpansAll() {
 		for ss := range rs.ScopeSpansAll() {
 			for sp := range ss.SpansAll() {
 				out = append(out, sp)

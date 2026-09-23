@@ -37,47 +37,31 @@ func newReceiver(set receiver.Settings, cfg component.Config, sig spool.Signal,
 
 func createTraces(_ context.Context, set receiver.Settings, cfg component.Config, next consumer.Traces) (receiver.Traces, error) {
 	return newReceiver(set, cfg, spool.Traces, func(ctx context.Context, b []byte) error {
-		td, err := pdatabridge.ToTraces(b)
-		if err != nil {
-			return err
-		}
-		return next.ConsumeTraces(ctx, td)
+		return next.ConsumeTraces(ctx, pdatabridge.FromRecord(b))
 	}), nil
 }
 
 func createMetrics(_ context.Context, set receiver.Settings, cfg component.Config, next consumer.Metrics) (receiver.Metrics, error) {
 	return newReceiver(set, cfg, spool.Metrics, func(ctx context.Context, b []byte) error {
-		md, err := metricbridge.ToMetrics(b)
-		if err != nil {
-			return err
-		}
-		return next.ConsumeMetrics(ctx, md)
+		return next.ConsumeMetrics(ctx, metricbridge.FromRecord(b))
 	}), nil
 }
 
 func createLogs(_ context.Context, set receiver.Settings, cfg component.Config, next consumer.Logs) (receiver.Logs, error) {
 	return newReceiver(set, cfg, spool.Logs, func(ctx context.Context, b []byte) error {
-		ld, err := logbridge.ToLogs(b)
-		if err != nil {
-			return err
-		}
-		return next.ConsumeLogs(ctx, ld)
+		return next.ConsumeLogs(ctx, logbridge.FromRecord(b))
 	}), nil
 }
 
 func createProfiles(_ context.Context, set receiver.Settings, cfg component.Config, next xconsumer.Profiles) (xreceiver.Profiles, error) {
 	return newReceiver(set, cfg, spool.Profiles, func(ctx context.Context, b []byte) error {
-		pd, err := profilebridge.ToProfiles(b)
-		if err != nil {
-			return err
-		}
-		return next.ConsumeProfiles(ctx, pd)
+		return next.ConsumeProfiles(ctx, profilebridge.FromRecord(b))
 	}), nil
 }
 
 // dagrFileReceiver is signal-agnostic: the spool walk, the tail check and the polling are
 // the same for all four, and `forward` is the one step that knows the signal — the
-// payload, a sub-slice of the spool, becomes an allocated pdata batch and goes down the
+// record, a sub-slice of the spool, becomes an allocated pdata batch and goes down the
 // pipeline.
 type dagrFileReceiver struct {
 	cfg     *Config
@@ -153,7 +137,7 @@ func (r *dagrFileReceiver) drain(ctx context.Context) error {
 		}
 		// The whole cost of this component, in one call: the buffer that was a
 		// sub-slice of the spool becomes an allocated pdata tree.
-		if err := r.forward(ctx, b.Payload); err != nil {
+		if err := r.forward(ctx, b.Record); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}

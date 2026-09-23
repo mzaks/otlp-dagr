@@ -4,6 +4,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
+	"otlpgen/logrecordlog"
 	g "otlpgen/otlplogs"
 )
 
@@ -14,9 +15,20 @@ func ToLogs(buf []byte) (plog.Logs, error) {
 	if err != nil {
 		return plog.Logs{}, err
 	}
+	return putLogs(root.ResourceLogsIter()), nil
+}
+
+// FromRecord materialises one LogRecordLog spool record (spool.Batch.Record) into pdata. The
+// record holds the batch's ResourceLogs inline, read in place with the same accessors
+// ToLogs uses — logrecordlog aliases them — so the two share one body.
+func FromRecord(record []byte) plog.Logs {
+	return putLogs(logrecordlog.NewBatchAccessor(record, 0).ResourceLogsIter())
+}
+
+func putLogs[I any, P cursor[I, g.ResourceLogsAccessor]](it I) plog.Logs {
+	c := P(&it)
 	ld := plog.NewLogs()
-	it := root.ResourceLogsIter()
-	for src, ok := it.Next(); ok; src, ok = it.Next() {
+	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		rl := ld.ResourceLogs().AppendEmpty()
 		if r, ok := src.Resource(); ok {
 			putResource(rl.Resource(), r)
@@ -42,7 +54,7 @@ func ToLogs(buf []byte) (plog.Logs, error) {
 			}
 		}
 	}
-	return ld, nil
+	return ld
 }
 
 func putLogRecord(r plog.LogRecord, src g.LogRecordAccessor) {

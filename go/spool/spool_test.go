@@ -11,12 +11,10 @@ import (
 	"otlpdagr/spool"
 )
 
-// encode is the exporter's encode step: one StreamBuilder and one dst, reused.
-func encode(t *testing.T, n int) ([]byte, uint32) {
+// encode is the exporter's encode step: one SpanLog record's content, received at ts.
+func encode(t *testing.T, n int, ts uint64) []byte {
 	t.Helper()
-	td := fixture.TracesN(n)
-	b := pdatabridge.NewStreamBuilder()
-	return b.BuildAppend(nil, td), uint32(td.SpanCount())
+	return pdatabridge.NewStreamBuilder().AppendRecord(nil, ts, fixture.TracesN(n))
 }
 
 func writeSpool(t *testing.T, path string, sizes ...int) [][]byte {
@@ -27,9 +25,9 @@ func writeSpool(t *testing.T, path string, sizes ...int) [][]byte {
 	}
 	var want [][]byte
 	for i, n := range sizes {
-		buf, count := encode(t, n)
-		want = append(want, buf)
-		if err := w.Append(uint64(1000+i), count, buf); err != nil {
+		rec := encode(t, n, uint64(1000+i))
+		want = append(want, rec)
+		if err := w.AppendRecord(rec); err != nil {
 			t.Fatalf("append %d: %v", i, err)
 		}
 	}
@@ -39,9 +37,9 @@ func writeSpool(t *testing.T, path string, sizes ...int) [][]byte {
 	return want
 }
 
-// Gate 1 (spec/38 §6.1.1): what the spool stores is what the direct builder produced,
-// byte for byte. The record is a `raw` embedded graph, so the exporter frames and
-// appends — it never re-encodes — and the receiver gets the original buffer back.
+// Gate 1 (spec/38 §6.1.1): what the spool stores is what the encoder produced, byte for
+// byte — the exporter frames and appends, it never re-encodes — and a reader gets the
+// record back as a view into the spool.
 func TestRecordIsTheEncoderOutputVerbatim(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spans.dagr")
 	want := writeSpool(t, path, 50, 7, 120)
@@ -52,7 +50,7 @@ func TestRecordIsTheEncoderOutputVerbatim(t *testing.T) {
 	}
 	var got [][]byte
 	if err := r.Forward(func(b spool.Batch) bool {
-		got = append(got, b.Payload)
+		got = append(got, b.Record)
 		return true
 	}); err != nil {
 		t.Fatalf("forward: %v", err)
@@ -65,12 +63,12 @@ func TestRecordIsTheEncoderOutputVerbatim(t *testing.T) {
 			t.Fatalf("record %d: %d bytes stored, %d encoded — not verbatim", i, len(got[i]), len(want[i]))
 		}
 	}
-	// And the blob is a view INTO the spool, not a copy of it.
+	// And the record is a view INTO the spool, not a copy of it.
 	if len(got) > 0 {
 		blob := got[0]
 		spoolBytes := r.Bytes()
 		if cap(blob) == 0 || &blob[0] != &spoolBytes[recordOffset(t, spoolBytes, blob)] {
-			t.Fatal("embedded batch was copied out of the spool")
+			t.Fatal("record was copied out of the spool")
 		}
 	}
 }
@@ -87,9 +85,10 @@ func recordOffset(t *testing.T, buf, blob []byte) int {
 	return 0
 }
 
-// The embedded leaf is a standalone Dagr buffer: it reads through OtlpTraces' own
-// readers, which is what makes a Dagr spool self-describing rather than an opaque frame.
-func TestEmbeddedBatchReadsAsAGraph(t *testing.T) {
+// A record's ResourceSpans read through OtlpTraces' own accessors, in place — the same
+// ones a TracesData buffer is read with — so the pdata bridge decodes a spool record
+// with the code it decodes a graph buffer with.
+func TestRecordReadsThroughTheGraphAccessors(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spans.dagr")
 	writeSpool(t, path, 40)
 
@@ -101,10 +100,7 @@ func TestEmbeddedBatchReadsAsAGraph(t *testing.T) {
 	if err != nil || len(last) != 1 {
 		t.Fatalf("last: %v (%d records)", err, len(last))
 	}
-	td, err := pdatabridge.ToTraces(last[0].Payload)
-	if err != nil {
-		t.Fatalf("to traces: %v", err)
-	}
+	td := pdatabridge.FromRecord(last[0].Record)
 	if got := td.SpanCount(); got != 40 {
 		t.Fatalf("span count %d, want 40", got)
 	}
@@ -234,7 +230,7 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 	// Simulate a kill in the middle of writing a third record.
-	partial, count := encode(t, 12)
+	partial := encode(t, 12, 1002)
 	torn := append(append([]byte(nil), whole...), partial[:len(partial)/2]...)
 	if err := os.WriteFile(path, torn, 0o644); err != nil {
 		t.Fatalf("write torn: %v", err)
@@ -250,7 +246,7 @@ func TestResumeAfterCrashKeepsOneStream(t *testing.T) {
 	if rec.ValidEnd != int64(len(whole)) {
 		t.Fatalf("recovered to %d, want %d", rec.ValidEnd, len(whole))
 	}
-	if err := w.Append(1002, count, partial); err != nil {
+	if err := w.AppendRecord(partial); err != nil {
 		t.Fatalf("append after resume: %v", err)
 	}
 	if err := w.Close(); err != nil {

@@ -2,13 +2,13 @@
 // profiles) that writes
 // batches to an OTLP-on-Dagr spool: an append-only, doubly-linked DataSink file.
 //
-// The whole exporter is three steps — encode the batch with the direct builder, stamp an
-// envelope, append one record — and the middle step is the interesting one. Dagr's
-// direct builder (spec 33) walks the borrowed pdata accessors straight to bytes with no
-// arena and no intermediate tree, which measured 1.50x protobuf's marshal in this repo's
-// benchmark while allocating nothing per batch. The record stores that buffer VERBATIM
-// as a `raw` embedded graph (spec 18 §11), so the exporter never re-encodes what it just
-// encoded, and the bytes on disk are a genuine standalone Dagr buffer.
+// The whole exporter is one step: encode the batch into a spool record and append it.
+// The record holds the batch's top-level array (ResourceSpans, ...) inline, written with
+// the signal graph's own generated code, so those bytes are exactly what the graph's
+// direct builder (spec 33) writes. Traces go through a one-pass StreamBuilder that walks
+// the borrowed pdata accessors straight into the record with no arena and no
+// intermediate tree — the path that measured 1.50x protobuf's marshal while allocating
+// nothing per batch; the other signals build a value tree first.
 //
 // It deliberately does not wrap itself in exporterhelper's queue and retry machinery.
 // The spool IS the queue — that is the point of spec/38 §6.1 — and putting a second,

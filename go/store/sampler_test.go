@@ -22,8 +22,8 @@ func writeSampling(t testing.TB, nTraces, nBatches int) (string, *fixture.Sampli
 	enc := pdatabridge.NewStreamBuilder()
 	var dst []byte
 	for i, td := range c.Batches {
-		dst = enc.BuildAppend(dst[:0], td)
-		if err := w.Append(uint64(5000+i), uint32(td.SpanCount()), dst); err != nil {
+		dst = enc.AppendRecord(dst[:0], uint64(5000+i), td)
+		if err := w.AppendRecord(dst); err != nil {
 			t.Fatalf("append %d: %v", i, err)
 		}
 	}

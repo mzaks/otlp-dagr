@@ -95,7 +95,7 @@ func Resume(path string, sig Signal) (*Writer, Recovery, error) {
 	// knowing before reusing the trick:
 	//
 	//   * the RecordRange that AppendBatch returns is relative to the wrong origin, so
-	//     Append discards it (read ranges back through the Reader instead);
+	//     the appends discard it (read ranges back through the Reader instead);
 	//   * a record embedding an ALIGNED raw leaf would compute its pad from that wrong
 	//     origin and misalign. No OTLP leaf has an aligned field (its max alignment is
 	//     1, so the generator emits no padding pass at all), but a schema that did would
@@ -125,16 +125,25 @@ func (s *skipFraming) Write(p []byte) (int, error) {
 	return s.to.Write(p)
 }
 
-// Append writes one batch: the encoded Otlp{Signal} buffer verbatim as the record's raw
-// embedded leaf (spec 18 §11), plus the two envelope fields a reverse reader can answer
-// questions from without opening the leaf at all. count is in the signal's own unit —
-// spans, data points, log records or samples.
-func (w *Writer) Append(receivedUnixNano uint64, count uint32, payload []byte) error {
-	if err := w.w.append(receivedUnixNano, count, payload); err != nil {
+// AppendRecord writes one batch whose record content is already encoded — a
+// Batch.Record read from a spool of the same signal (compaction copies records this way,
+// with no decode), or a record a streaming encoder built directly
+// (pdatabridge.StreamBuilder.AppendRecord). The typed Append{Signal} methods in
+// signal.go write one from values.
+func (w *Writer) AppendRecord(record []byte) error {
+	return w.appended(w.w.appendRaw(record))
+}
+
+func (w *Writer) appended(err error) error {
+	if err != nil {
 		return err
 	}
 	w.n++
 	return nil
+}
+
+func (w *Writer) wrongSignal(want Signal) error {
+	return fmt.Errorf("spool: %s batch appended to a %s spool", want, w.sig)
 }
 
 // Sync flushes the spool to stable storage. An exporter that promises durability calls
@@ -151,12 +160,15 @@ func (w *Writer) Signal() Signal { return w.sig }
 
 // ── Reading ──────────────────────────────────────────────────────────────────
 
-// Batch is one spool record: the envelope fields, and the embedded OTLP buffer as a
-// sub-slice of the spool bytes — no copy, no decode.
+// Batch is one spool record: the envelope fields, and the record itself as a sub-slice
+// of the spool bytes — no copy, no decode. Record is the record's content (content_size
+// LEB + packed body, what the generated Record.Raw returns): the signal's sink opens it
+// in place (`spanlog.NewBatchAccessor(b.Record, 0)`), and so do the bridges
+// (`pdatabridge.FromRecord`); AppendRecord writes it to another spool unchanged.
 type Batch struct {
 	ReceivedUnixNano uint64
 	Count            uint32 // spans / data points / log records / samples
-	Payload          []byte // an Otlp{Traces,Metrics,Logs,Profiles} buffer
+	Record           []byte
 	Range            Range
 }
 
@@ -214,8 +226,8 @@ func (r *Reader) Last(n int) ([]Batch, error) {
 
 // LastItems walks backwards until it has accounted for at least n items (spans, data
 // points, log records or samples), and returns the batches that hold them, newest first
-// — the "last N spans before the crash" query. Only the envelope's count is read; no
-// embedded batch is opened.
+// — the "last N spans before the crash" query. Only the envelope's count is read; the
+// batch itself is never touched.
 func (r *Reader) LastItems(n int) ([]Batch, int, error) {
 	var out []Batch
 	total := 0

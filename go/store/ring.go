@@ -54,9 +54,10 @@ func OpenRing(path string, opt RingOptions) (*Ring, spool.Recovery, error) {
 	return &Ring{path: path, opt: opt, w: w}, rec, nil
 }
 
-// Append adds a batch and compacts if the ring is over budget.
-func (r *Ring) Append(receivedUnixNano uint64, spanCount uint32, traces []byte) error {
-	if err := r.w.Append(receivedUnixNano, spanCount, traces); err != nil {
+// Append adds one batch — a SpanLog record's content, as pdatabridge.StreamBuilder's
+// AppendRecord builds it — and compacts if the ring is over budget.
+func (r *Ring) Append(record []byte) error {
+	if err := r.w.AppendRecord(record); err != nil {
 		return err
 	}
 	if r.opt.Sync {
@@ -131,12 +132,7 @@ func (r *Ring) Compact() error {
 	}
 	before := int64(len(rd.Bytes()))
 
-	type kept struct {
-		received uint64
-		count    uint32
-		traces   []byte
-	}
-	var keep []kept
+	var keep [][]byte // whole records, copied verbatim — nothing is decoded
 	var bytes int64
 	walked := 0
 	if err := rd.Reverse(func(b spool.Batch) bool {
@@ -148,7 +144,7 @@ func (r *Ring) Compact() error {
 		if r.opt.MaxBatches > 0 && len(keep) >= r.opt.MaxBatches {
 			return false
 		}
-		keep = append(keep, kept{b.ReceivedUnixNano, b.Count, b.Payload})
+		keep = append(keep, b.Record)
 		bytes += size
 		return true
 	}); err != nil {
@@ -162,7 +158,7 @@ func (r *Ring) Compact() error {
 		return err
 	}
 	for i := len(keep) - 1; i >= 0; i-- {
-		if err := w.Append(keep[i].received, keep[i].count, keep[i].traces); err != nil {
+		if err := w.AppendRecord(keep[i]); err != nil {
 			w.Close()
 			os.Remove(tmp)
 			return err
