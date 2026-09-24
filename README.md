@@ -617,7 +617,13 @@ through the generated lazy accessors. No value tree and no protobuf anywhere in 
 ```
 rust/otap/check.sh     # fixtures -> dagr2otap -> otel-arrow's Go consumer AND its Rust decoder
 rust/otap/bench.sh     # vs otel-arrow's own OTLP -> OTAP path, same batches
+dagr2otap spool spans.dagr   # an exporter spool -> one OTAP batch per record
 ```
+
+It reads the exporter's spools too — `Producer::spool`: the header says which signal, and
+each record (which holds its batch inline, in the signal graph's layout) converts through
+the same accessors a graph buffer does, straight from the file. A torn tail stops the
+conversion where `spool.Recover` would cut it.
 
 The gate is otel-arrow's own code: the Go consumer the collector's `otelarrowreceiver` runs
 must give back each fixture (otel-arrow's `assert.Equiv`, plus exact protobuf bytes where no

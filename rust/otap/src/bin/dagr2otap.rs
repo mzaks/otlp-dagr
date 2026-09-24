@@ -5,7 +5,11 @@
 //! producer (schemas and dictionaries carried across), each written to `<file>.sbar`; a
 //! receiver must read them in the same order on one connection.
 //!
-//! The gate (`otap/check.sh`) feeds both to otel-arrow's own consumers.
+//! `dagr2otap spool <file>` — a SPOOL (otlp-dagr's exporter file, any signal — the header
+//! says which): every record, in order, through one producer, each written to
+//! `<file stem>-spool-NN.spbar`.
+//!
+//! The gate (`otap/check.sh`) feeds all of them to otel-arrow's own consumers.
 
 use std::io::{Read, Write};
 
@@ -17,6 +21,23 @@ fn main() {
     // `DAGR2OTAP_ZSTD=1`: zstd-compress the IPC bodies
     let zstd = std::env::var("DAGR2OTAP_ZSTD").is_ok_and(|v| v == "1");
     let mut p = otlp_dagr_otap::Producer::default().with_metric_metadata(meta).with_zstd(zstd);
+    if signal == "spool" {
+        let path = std::path::Path::new(args.get(2).expect("dagr2otap spool <file>"));
+        let data = std::fs::read(path).expect("read spool");
+        let stem = path.with_extension("");
+        let mut i = 0;
+        let summary = p
+            .spool(&data, |bar| {
+                std::fs::write(format!("{}-spool-{i:02}.spbar", stem.display()), bar).expect("write .spbar");
+                i += 1;
+            })
+            .unwrap_or_else(|e| {
+                eprintln!("dagr2otap: {e}");
+                std::process::exit(1);
+            });
+        eprintln!("dagr2otap: {:?} spool, {} records", summary.signal, summary.records);
+        return;
+    }
     let mut convert = |input: &[u8]| {
         let out = match signal.as_str() {
             "traces" => p.traces(input),

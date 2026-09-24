@@ -131,16 +131,30 @@ func run[T any](t *testing.T, prefix string, s signal[T]) {
 // later ones reuse earlier schemas and dictionaries — with ONE consumer, in order, and
 // checks each against its fixture.
 func runStream[T any](t *testing.T, prefix string, s signal[T]) {
+	runSeq(t, prefix+"-stream-*.sbar", func(p string) string { return strings.TrimSuffix(filepath.Base(p), ".sbar") }, s)
+}
+
+// runSpool checks the batches the bridge made from a SPOOL (`<prefix>-spool-NN.spbar`,
+// one per record) against the same stream fixtures the spool was written from.
+func runSpool[T any](t *testing.T, prefix string, s signal[T]) {
+	runSeq(t, prefix+"-spool-*.spbar", func(p string) string {
+		return strings.Replace(strings.TrimSuffix(filepath.Base(p), ".spbar"), "-spool-", "-stream-", 1)
+	}, s)
+}
+
+// runSeq decodes the files matching glob, in name order, with ONE consumer; fixture maps
+// a file to the name of the fixture it must equal.
+func runSeq[T any](t *testing.T, glob string, fixture func(string) string, s signal[T]) {
 	dir := work(t)
-	sbars, _ := filepath.Glob(filepath.Join(dir, prefix+"-stream-*.sbar"))
+	sbars, _ := filepath.Glob(filepath.Join(dir, glob))
 	if len(sbars) == 0 {
-		t.Skipf("no %s-stream-*.sbar in %s", prefix, dir)
+		t.Skipf("no %s in %s", glob, dir)
 	}
 	sort.Strings(sbars)
 	c := arrow_record.NewConsumer()
 	defer c.Close()
 	for _, p := range sbars {
-		name := strings.TrimSuffix(filepath.Base(p), ".sbar")
+		name := fixture(p)
 		raw, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
@@ -185,6 +199,9 @@ func runStream[T any](t *testing.T, prefix string, s signal[T]) {
 func TestTracesStream(t *testing.T)  { runStream(t, "traces", tracesSignal) }
 func TestLogsStream(t *testing.T)    { runStream(t, "logs", logsSignal) }
 func TestMetricsStream(t *testing.T) { runStream(t, "metrics", metricsSignal) }
+func TestTracesSpool(t *testing.T)   { runSpool(t, "traces", tracesSignal) }
+func TestLogsSpool(t *testing.T)     { runSpool(t, "logs", logsSignal) }
+func TestMetricsSpool(t *testing.T)  { runSpool(t, "metrics", metricsSignal) }
 
 var tracesSignal = signal[ptrace.Traces]{
 	unmarshal: (&ptrace.ProtoUnmarshaler{}).UnmarshalTraces,

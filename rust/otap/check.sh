@@ -31,6 +31,13 @@ for sig in $SIGNALS; do
   done
 done
 # 1. the acceptance gate: otel-arrow's Go consumer, the collector receiver's own code
+# the SPOOLS: the stream batches as the exporter writes them (otlpdagrctl fixtures), each
+# converted record by record on one producer -> <sig>-spool-NN.spbar, checked against the
+# same stream-NN fixtures
+for sig in $SIGNALS; do
+  "$BIN" spool "$WORK/$sig.spool" 2>/dev/null
+  echo "  $sig.spool: $(wc -c < "$WORK/$sig.spool" | tr -d ' ') B spool -> $(cat "$WORK/$sig"-spool-*.spbar | wc -c | tr -d ' ') B OTAP"
+done
 # metric metadata (METRIC_ATTRS) is opt-in — the Go consumer rejects it — so the
 # opt-in output goes to the Rust decoder only, as the "metricsmeta" signal
 if [[ " $SIGNALS " == *" metrics "* ]]; then

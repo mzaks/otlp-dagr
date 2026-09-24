@@ -69,6 +69,16 @@ fn nz32(v: Option<u32>) -> Option<u32> {
 }
 
 impl Logs {
+    /// Converts one spool record (the log_record_log `Batch`, which holds the batch's
+    /// `resource_logs` inline in this graph's own node layout — Dagr spec/11 §12) into the payloads
+    /// of `bar`. Same walk as `convert`; only the entry point differs.
+    pub fn record(&mut self, rec: &otlp_dagr::log_record_log_sink::BatchRecord<'_>, bar: &mut Bar<'_>) -> Result<(), Error> {
+        for r in rec.resource_logs()?.iter() {
+            self.resource_logs(&r?)?;
+        }
+        self.finish(bar)
+    }
+
     pub fn convert(&mut self, buf: &[u8], bar: &mut Bar<'_>) -> Result<(), Error> {
         let root = lz::read_root(buf)?;
         for rl in root.resource_logs()?.iter() {
@@ -101,13 +111,13 @@ impl Logs {
             for lr in sl.log_records()?.iter() {
                 let lr = lr?;
                 self.env.row(rid, sid, &row);
-                self.record(&lr)?;
+                self.log_record(&lr)?;
             }
         }
         Ok(())
     }
 
-    fn record(&mut self, lr: &lz::LogRecordAccessor<'_>) -> Result<(), Error> {
+    fn log_record(&mut self, lr: &lz::LogRecordAccessor<'_>) -> Result<(), Error> {
         let id = id16(self.ids.len() as u32, "log records")?;
         self.ids.push(id);
         self.time.append_option(lr.time_unix_nano().filter(|t| *t != 0).map(|t| t as i64));

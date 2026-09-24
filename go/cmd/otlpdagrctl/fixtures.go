@@ -16,6 +16,10 @@ import (
 	"otlpdagr/logbridge"
 	"otlpdagr/metricbridge"
 	"otlpdagr/pdatabridge"
+	"otlpdagr/spool"
+	"otlpgen/logrecordlog"
+	"otlpgen/metriclog"
+	"otlpgen/spanlog"
 )
 
 // fixtures writes every fixture the OTAP gate (rust/otap/check.sh) converts, twice: as the
@@ -52,7 +56,8 @@ func fixtures(args []string) error {
 	// a STREAM: one large seeded batch cut into consecutive batches, which share their
 	// vocabulary (keys, names, scopes, resources) but not their ids and values — what an
 	// exporter sends, and what cross-batch stream state is measured on (bench.sh)
-	for i, td := range splitTraces(fixture.TracesN(streamBatches*500), 500) {
+	streamTraces := splitTraces(fixture.TracesN(streamBatches*500), 500)
+	for i, td := range streamTraces {
 		traces[fmt.Sprintf("stream-%02d", i)] = td
 	}
 	for name, td := range traces {
@@ -62,7 +67,8 @@ func fixtures(args []string) error {
 		}
 	}
 	logs := map[string]plog.Logs{"wide": fixture.LogsWide(), "batch": fixture.LogsBatch(500)}
-	for i, ld := range splitLogs(fixture.LogsBatch(streamBatches*500), 500) {
+	streamLogs := splitLogs(fixture.LogsBatch(streamBatches*500), 500)
+	for i, ld := range streamLogs {
 		logs[fmt.Sprintf("stream-%02d", i)] = ld
 	}
 	for name, ld := range logs {
@@ -76,7 +82,8 @@ func fixtures(args []string) error {
 		"batch":     fixture.MetricsBatch(100, 6),
 		"exemplars": exemplarRuns(),
 	}
-	for i, md := range splitMetrics(fixture.MetricsBatch(streamBatches*100, 6), 100) {
+	streamMetrics := splitMetrics(fixture.MetricsBatch(streamBatches*100, 6), 100)
+	for i, md := range streamMetrics {
 		metrics[fmt.Sprintf("stream-%02d", i)] = md
 	}
 	for name, md := range metrics {
@@ -85,7 +92,50 @@ func fixtures(args []string) error {
 			return err
 		}
 	}
-	return nil
+	// the same stream batches as a real SPOOL (the exporter's file, go/spool): one record
+	// each, in order — the bridge's spool input must give back the stream-NN fixtures
+	return writeSpools(*out, streamTraces, streamLogs, streamMetrics)
+}
+
+func writeSpools(dir string, td []ptrace.Traces, ld []plog.Logs, md []pmetric.Metrics) error {
+	open := func(name string, sig spool.Signal) (*spool.Writer, error) {
+		return spool.CreateWith(filepath.Join(dir, name+".spool"), spool.NewHeader(sig, "otlpdagrctl fixtures"))
+	}
+	w, err := open("traces", spool.Traces)
+	if err != nil {
+		return err
+	}
+	for i, t := range td {
+		if err := w.AppendTraces(spanlog.Batch{ReceivedUnixNano: uint64(1_758_000_000_000_000_000 + i),
+			SpanCount: uint32(t.SpanCount()), ResourceSpans: pdatabridge.ToValue(t).ResourceSpans.V}); err != nil {
+			return err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	if w, err = open("logs", spool.Logs); err != nil {
+		return err
+	}
+	for i, l := range ld {
+		if err := w.AppendLogs(logrecordlog.Batch{ReceivedUnixNano: uint64(1_758_000_000_000_000_000 + i),
+			LogRecordCount: uint32(l.LogRecordCount()), ResourceLogs: logbridge.ToValue(l).ResourceLogs.V}); err != nil {
+			return err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	if w, err = open("metrics", spool.Metrics); err != nil {
+		return err
+	}
+	for i, m := range md {
+		if err := w.AppendMetrics(metriclog.Batch{ReceivedUnixNano: uint64(1_758_000_000_000_000_000 + i),
+			DataPointCount: uint32(m.DataPointCount()), ResourceMetrics: metricbridge.ToValue(m).ResourceMetrics.V}); err != nil {
+			return err
+		}
+	}
+	return w.Close()
 }
 
 // exemplarRuns exercises exemplar parent_id QUASI-DELTA, which neither the wide nor the

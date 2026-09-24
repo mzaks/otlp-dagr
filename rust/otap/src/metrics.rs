@@ -331,6 +331,16 @@ impl Default for Metrics {
 }
 
 impl Metrics {
+    /// Converts one spool record (the metric_log `Batch`, which holds the batch's
+    /// `resource_metrics` inline in this graph's own node layout — Dagr spec/11 §12) into the payloads
+    /// of `bar`. Same walk as `convert`; only the entry point differs.
+    pub fn record(&mut self, rec: &otlp_dagr::metric_log_sink::BatchRecord<'_>, bar: &mut Bar<'_>) -> Result<(), Error> {
+        for r in rec.resource_metrics()?.iter() {
+            self.resource_metrics(&r?)?;
+        }
+        self.finish(bar)
+    }
+
     pub fn convert(&mut self, buf: &[u8], bar: &mut Bar<'_>) -> Result<(), Error> {
         let root = lz::read_root(buf)?;
         for rm in root.resource_metrics()?.iter() {

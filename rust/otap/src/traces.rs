@@ -118,6 +118,16 @@ fn nz(v: Option<u32>) -> Option<u32> {
 
 impl Traces {
     /// Converts one OtlpTraces buffer into the payloads of `bar`.
+    /// Converts one spool record (the span_log `Batch`, which holds the batch's
+    /// `resource_spans` inline in this graph's own node layout — Dagr spec/11 §12) into the payloads
+    /// of `bar`. Same walk as `convert`; only the entry point differs.
+    pub fn record(&mut self, rec: &otlp_dagr::span_log_sink::BatchRecord<'_>, bar: &mut Bar<'_>) -> Result<(), Error> {
+        for r in rec.resource_spans()?.iter() {
+            self.resource_spans(&r?)?;
+        }
+        self.finish(bar)
+    }
+
     pub fn convert(&mut self, buf: &[u8], bar: &mut Bar<'_>) -> Result<(), Error> {
         let root = lz::read_root(buf)?;
         for rs in root.resource_spans()?.iter() {
