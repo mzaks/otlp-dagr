@@ -31,7 +31,7 @@ use arrow::array::{
     Array, ArrayData, ArrayRef, ArrowPrimitiveType, BinaryArray, DictionaryArray, FixedSizeBinaryArray, StringArray,
     UInt8Array, UInt16Array, UInt32Array, make_array, new_null_array,
 };
-use arrow::buffer::{Buffer, NullBuffer, OffsetBuffer, ScalarBuffer};
+use arrow::buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow::compute::take;
 use arrow::datatypes::{DataType, UInt8Type, UInt16Type};
 
@@ -115,6 +115,9 @@ const SWITCH: usize = 512;
 /// How often a column in plain mode tries the dictionary again.
 const PROBE: u32 = 8;
 
+/// The row id of a null row (one vector per column; the null bitmap is built at `finish`).
+const NULL: u32 = u32::MAX;
+
 /// One dictionary column: the stream-long interner plus this batch's rows.
 pub struct Col {
     kind: Kind,
@@ -136,8 +139,8 @@ pub struct Col {
     pbytes: Vec<u8>,
     pstarts: Vec<usize>,
     held: bool,               // `values` went out as a dictionary last batch (receiver has it)
-    rows: Vec<u32>,
-    valid: Vec<bool>,
+    rows: Vec<u32>, // a value id per row, NULL for a null row
+
     nulls: usize,
     plain: usize, // bytes this batch's column would take unpacked
 }
@@ -161,7 +164,6 @@ impl Col {
             pbytes: Vec::new(),
             pstarts: vec![0],
             rows: Vec::new(),
-            valid: Vec::new(),
             nulls: 0,
             plain: 0,
         }
@@ -185,7 +187,6 @@ impl Col {
         if self.plain_mode {
             self.pbytes.extend_from_slice(v);
             self.pstarts.push(self.pbytes.len());
-            self.valid.push(true);
             self.rows.push(0);
             return;
         }
@@ -203,34 +204,50 @@ impl Col {
         };
         self.seen[id as usize] = self.epoch;
         self.rows.push(id);
-        self.valid.push(true);
     }
 
     #[inline]
     fn push_null(&mut self) {
-        self.plain += match self.kind {
-            Kind::Utf8 | Kind::Binary => 4,
+        let n = self.rows.len() + 1;
+        self.pad(n);
+    }
+
+    /// Null rows until the column has `n` rows — a whole gap at once. A sparse column (an
+    /// attribute's `str`, `int`, … — each row fills only one of them) is filled this way
+    /// instead of a null per row.
+    #[inline]
+    fn pad(&mut self, n: usize) {
+        let gap = n.saturating_sub(self.rows.len());
+        if gap == 0 {
+            return;
+        }
+        // plain bytes of a null: an offset for var-length, a zeroed slot for fixed-width
+        let w = match self.kind {
+            Kind::Utf8 | Kind::Binary => 0,
             Kind::Fixed(w) => w as usize,
             Kind::Prim(_, w) => w,
         };
-        self.rows.push(0);
-        self.valid.push(false);
-        self.nulls += 1;
+        self.plain += gap * if w == 0 { 4 } else { w };
+        self.rows.resize(n, NULL);
+        self.nulls += gap;
         if self.plain_mode {
-            // fixed-width columns keep a slot per row, even a null one
-            let w = match self.kind {
-                Kind::Fixed(w) => w as usize,
-                Kind::Prim(_, w) => w,
-                _ => 0,
-            };
-            self.pbytes.resize(self.pbytes.len() + w, 0);
-            self.pstarts.push(self.pbytes.len());
+            self.pbytes.resize(self.pbytes.len() + gap * w, 0);
+            let end = self.pbytes.len();
+            self.pstarts.resize(self.pstarts.len() + gap, end);
         }
+    }
+
+    fn null_buffer(&self) -> Option<NullBuffer> {
+        if self.nulls == 0 {
+            return None;
+        }
+        let rows = &self.rows;
+        Some(NullBuffer::new(BooleanBuffer::collect_bool(rows.len(), |i| rows[i] != NULL)))
     }
 
     /// The plain column written directly in plain mode.
     fn plain_array(&mut self, n: usize) -> ArrayRef {
-        let nulls = if self.nulls == 0 { None } else { Some(NullBuffer::from(self.valid.clone())) };
+        let nulls = self.null_buffer();
         let data = Buffer::from(self.pbytes.as_slice());
         let out: ArrayRef = match &self.kind {
             Kind::Utf8 | Kind::Binary => {
@@ -284,7 +301,7 @@ impl Col {
         let (mut bytes, mut starts, mut seen) = (Vec::new(), vec![0], Vec::new());
         self.map.clear();
         for r in 0..self.rows.len() {
-            if !self.valid[r] {
+            if self.rows[r] == NULL {
                 continue;
             }
             let old = self.rows[r] as usize;
@@ -331,7 +348,6 @@ impl Col {
             self.plain_mode = false;
         }
         self.rows.clear();
-        self.valid.clear();
         self.nulls = 0;
         self.plain = 0;
         self.added = false;
@@ -353,7 +369,12 @@ impl Col {
             self.values = Some(self.build_values());
         }
         let values = self.values.clone().unwrap();
-        let nulls = if self.nulls == 0 { None } else { Some(NullBuffer::from(self.valid.clone())) };
+        let nulls = self.null_buffer();
+        // the keys, by move: a null row's key is ignored, but must still be in range
+        let mut keys = std::mem::take(&mut self.rows);
+        if self.nulls > 0 {
+            keys.iter_mut().for_each(|k| if *k == NULL { *k = 0 });
+        }
         // key width only widens within a stream: narrowing would change the schema
         let dict = if total > 65_536 {
             Enc::Plain
@@ -373,7 +394,7 @@ impl Col {
         self.last = choice;
         self.held = choice != Enc::Plain;
         if choice == Enc::Plain {
-            let idx = UInt32Array::new(self.rows.clone().into(), nulls.clone());
+            let idx = UInt32Array::new(keys.into(), nulls.clone());
             let taken = take(values.as_ref(), &idx, None).expect("dictionary to plain");
             // arrow-rs 53's `take` drops the INDEX nulls for FixedSizeBinary (the stream
             // gate caught null trace ids decoding as real ones): apply them explicitly.
@@ -383,10 +404,10 @@ impl Col {
             return make_array(data.into_builder().nulls(merged).build().expect("plain column"));
         }
         if choice == Enc::U8 {
-            let k = UInt8Array::new(self.rows.iter().map(|x| *x as u8).collect(), nulls);
+            let k = UInt8Array::new(keys.iter().map(|x| *x as u8).collect(), nulls);
             Arc::new(DictionaryArray::<UInt8Type>::try_new(k, values).expect("u8 dictionary"))
         } else {
-            let k = UInt16Array::new(self.rows.iter().map(|x| *x as u16).collect(), nulls);
+            let k = UInt16Array::new(keys.iter().map(|x| *x as u16).collect(), nulls);
             Arc::new(DictionaryArray::<UInt16Type>::try_new(k, values).expect("u16 dictionary"))
         }
     }
@@ -410,6 +431,10 @@ impl Str {
     pub fn append_null(&mut self) {
         self.0.push_null();
     }
+    /// Null rows up to `n` rows (a sparse column's gap, in one step).
+    pub fn pad(&mut self, n: usize) {
+        self.0.pad(n);
+    }
     pub fn finish(&mut self) -> ArrayRef {
         self.0.finish()
     }
@@ -426,6 +451,10 @@ impl Bin {
             Some(v) => self.0.push(v),
             None => self.0.push_null(),
         }
+    }
+    /// Null rows up to `n` rows (a sparse column's gap, in one step).
+    pub fn pad(&mut self, n: usize) {
+        self.0.pad(n);
     }
     pub fn finish(&mut self) -> ArrayRef {
         self.0.finish()
@@ -444,6 +473,10 @@ impl Fsb {
     }
     pub fn append_null(&mut self) {
         self.0.push_null();
+    }
+    /// Null rows up to `n` rows (a sparse column's gap, in one step).
+    pub fn pad(&mut self, n: usize) {
+        self.0.pad(n);
     }
     pub fn finish(&mut self) -> ArrayRef {
         self.0.finish()
@@ -471,6 +504,10 @@ impl<T: ArrowPrimitiveType> Prim<T> {
     }
     pub fn append_null(&mut self) {
         self.0.push_null();
+    }
+    /// Null rows up to `n` rows (a sparse column's gap, in one step).
+    pub fn pad(&mut self, n: usize) {
+        self.0.pad(n);
     }
     pub fn finish(&mut self) -> ArrayRef {
         self.0.finish()

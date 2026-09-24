@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, BooleanBuilder, Float64Builder, UInt8Builder, UInt16Array, UInt32Array};
+use arrow::array::{ArrayBuilder, ArrayRef, BooleanBuilder, Float64Builder, UInt8Builder, UInt16Array, UInt32Array};
 use arrow::datatypes::Int64Type;
 use arrow::error::ArrowError;
 use arrow::record_batch::RecordBatch;
@@ -88,21 +88,52 @@ impl Default for ValueCols {
 }
 
 impl ValueCols {
+    /// One row. Only the active value column is written; the others are padded with
+    /// nulls lazily, a gap at a time (`pad`), instead of a null into five columns per row
+    /// — every attribute row used to pay for all six.
     pub fn push(&mut self, v: &Val<'_>) {
+        let r = self.ty.len();
         self.ty.append_value(v.ty());
-        self.s.append_option(if let Val::Str(x) = v { Some(*x) } else { None });
-        self.i.append_option(if let Val::Int(x) = v { Some(*x) } else { None });
-        self.d.append_option(if let Val::Double(x) = v { Some(*x) } else { None });
-        self.b.append_option(if let Val::Bool(x) = v { Some(*x) } else { None });
-        self.by.append_option(if let Val::Bytes(x) = v { Some(*x) } else { None });
-        self.ser.append_option(match v {
-            Val::Map(x) | Val::Slice(x) => Some(*x),
-            _ => None,
-        });
+        match v {
+            Val::Empty => {}
+            Val::Str(x) => {
+                self.s.pad(r);
+                self.s.append_value(x);
+            }
+            Val::Int(x) => {
+                self.i.pad(r);
+                self.i.append_value(*x);
+            }
+            Val::Double(x) => {
+                pad(&mut self.d, r);
+                self.d.append_value(*x);
+            }
+            Val::Bool(x) => {
+                let gap = r - self.b.len();
+                self.b.append_nulls(gap);
+                self.b.append_value(*x);
+            }
+            Val::Bytes(x) => {
+                self.by.pad(r);
+                self.by.append_option(Some(x));
+            }
+            Val::Map(x) | Val::Slice(x) => {
+                self.ser.pad(r);
+                self.ser.append_option(Some(x));
+            }
+        }
     }
 
     /// `type` (required) and every value column that holds anything.
     pub fn finish(&mut self, c: &mut Cols) {
+        let n = self.ty.len();
+        self.s.pad(n);
+        self.i.pad(n);
+        pad(&mut self.d, n);
+        let gap = n - self.b.len();
+        self.b.append_nulls(gap);
+        self.by.pad(n);
+        self.ser.pad(n);
         c.req("type", Arc::new(self.ty.finish()));
         c.opt("str", self.s.finish());
         c.opt("int", self.i.finish());
@@ -111,6 +142,11 @@ impl ValueCols {
         c.opt("bytes", self.by.finish());
         c.opt("ser", self.ser.finish());
     }
+}
+
+fn pad(b: &mut Float64Builder, n: usize) {
+    let gap = n - b.len();
+    b.append_nulls(gap);
 }
 
 pub struct Attrs {
