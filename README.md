@@ -628,9 +628,9 @@ producer each, as an exporter sends them:
 
 ```
 stream     dagr µs/batch  otel-arrow  speedup   bytes dagr / o-a      zstd dagr / o-a
-traces          451.3        515.4     1.14x   1,488,452 1,709,058    571,036  634,714
-logs            255.2        224.5     0.88x   1,651,568 1,610,338    533,680  556,962
-metrics         272.8        339.5     1.24x   1,864,890 1,829,432    379,088  416,014
+traces          396.7        530.4     1.34x   1,488,452 1,709,058    571,036  634,714
+logs            246.1        225.8     0.92x   1,651,568 1,610,338    533,680  556,962
+metrics         258.5        350.4     1.36x   1,864,890 1,829,432    379,088  416,014
 ```
 
 Compressed, as OTAP is sent, the output is 4–10% smaller than otel-arrow's own producer,
