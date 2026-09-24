@@ -1,0 +1,32 @@
+# The OTAP end-to-end collector (rust/otap/e2e.sh): the contrib OpenTelemetry Arrow
+# receiver — the released one, unmodified — receives the batches the Dagr -> OTAP bridge
+# produced, over gRPC streams, and each signal's pipeline writes what it decoded as OTLP
+# JSON, one line per batch, for the verifier to compare with the fixtures.
+receivers:
+  otelarrow:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:${OTAP_PORT}
+
+exporters:
+  file/traces:
+    path: ${WORK}/out-otap-traces.json
+  file/logs:
+    path: ${WORK}/out-otap-logs.json
+  file/metrics:
+    path: ${WORK}/out-otap-metrics.json
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otelarrow]
+      exporters: [file/traces]
+    logs:
+      receivers: [otelarrow]
+      exporters: [file/logs]
+    metrics:
+      receivers: [otelarrow]
+      exporters: [file/metrics]

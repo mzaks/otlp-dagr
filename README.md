@@ -618,7 +618,14 @@ through the generated lazy accessors. No value tree and no protobuf anywhere in 
 rust/otap/check.sh     # fixtures -> dagr2otap -> otel-arrow's Go consumer AND its Rust decoder
 rust/otap/bench.sh     # vs otel-arrow's own OTLP -> OTAP path, same batches
 dagr2otap spool spans.dagr   # an exporter spool -> one OTAP batch per record
+rust/otap/e2e.sh       # over gRPC into the released otelarrowreceiver, in a real collector
 ```
+
+`e2e.sh` is the end of the chain: the bridge's batches — a 20-batch stream per signal, the
+same batches converted from a spool, and every single-batch fixture — go over gRPC into
+the contrib `otelarrowreceiver` (v0.161.0) in an `ocb`-built collector. Every batch is
+acknowledged OK, and every one comes out of the collector's pipeline equal to the fixture
+it was made from.
 
 It reads the exporter's spools too — `Producer::spool`: the header says which signal, and
 each record (which holds its batch inline, in the signal graph's layout) converts through
