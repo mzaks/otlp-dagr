@@ -664,7 +664,7 @@ the gate turned up, and the numbers.
 | **Reads, large-array sweep** | **fixed** — 9.3× via the new `All()` / `Iter()`, linear scaling, 0 allocs. `At(i)` in a loop is still O(n²) by construction. |
 | **Validated open** | 3.2× a protobuf decode. Fine in-process, a real cost on an untrusted hop. |
 | **Materialise to pdata** | loses, as designed. Do not build a pipeline that does this. |
-| **Encode from pdata** | **loses, 1.50× — down from 5.3×, allocation-free, one pass over pdata.** The Dagr serializer itself is at **1.07× — parity**; the residue is pdata's own accessor API. |
+| **Encode from pdata** | **loses, 1.50× — down from 5.3×, allocation-free, one pass over pdata.** The Dagr serializer itself is at **1.07× — parity**; the residue is pdata's own accessor API. Metrics / logs / profiles, also one pass and allocation-free: 2.0× / 1.7× / 2.0× (serializer alone 1.55× / 1.17× / 1.41×). |
 | **Exporter → spool** | **runs, in a real collector.** Framing and appending costs ~10% on top of encoding and allocates nothing; the record stores the encoder's output verbatim. |
 | **Spool → receiver** | **runs, and loses, as designed** — it materialises. It is the compatibility path, not the fast one. |
 | **Crash tail** | **detected, over every truncation of a batch** — and the naive one-record check is not enough to do it (see above). |
@@ -695,10 +695,10 @@ in RAM.
 
 So the shape the whole plan has been arguing toward is now assembled end to end: Dagr at
 the collector's edges (step 6), and the reads that justify it in a service that owns the
-buffer (step 7). What is left is §14 step 8 — the Arrow bridge and/or Go path query —
-over all four signals now that D6 is done, and the open decisions in §12. D2 is settled
-for the spools (they carry a header); what it still leaves open is a header on the
-signal GRAPHS themselves.
+buffer (step 7). §14 step 8 is done too: [the OTAP bridge](#otap-dagr-into-opentelemetry-arrow)
+runs end to end into the released otelarrowreceiver. What is left are the open decisions
+in `spec/38` §12 — D2 is settled for the spools (they carry a header) but still open for
+a header on the signal GRAPHS themselves — and Go path query, which stays deferred.
 
 ## Licence
 
