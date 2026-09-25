@@ -74,43 +74,65 @@ func send(args []string) error {
 	endpoint := fs.String("endpoint", "", "full endpoint (default: base + the signal's path)")
 	spans := fs.Int("spans", 500, "spans per batch (traces)")
 	batches := fs.Int("batches", 1, "how many batches to send")
+	shape := fs.String("shape", "wide", "metrics | logs | profiles: wide (every field, the round-trip gate) or batch (the benchmark's realistic batch)")
+	dur := fs.Duration("for", 0, "keep sending until this much time has passed (ignores -batches) — load for a CPU profile")
 	retry := fs.Duration("retry", 20*time.Second, "keep retrying until the collector is up")
 	_ = fs.Parse(args)
 	sig, err := parseSignal(*sigName)
 	if err != nil {
 		return err
 	}
-	if sig != spool.Traces {
-		body, path, err := wideRequest(sig)
-		if err != nil {
-			return err
+	var body []byte
+	var path, what string
+	if sig == spool.Traces {
+		body, err = ptraceotlp.NewExportRequestFromTraces(fixture.TracesN(*spans)).MarshalProto()
+		path, what = "/v1/traces", fmt.Sprintf("batches of %d spans", *spans)
+	} else {
+		switch *shape {
+		case "wide":
+			body, path, err = wideRequest(sig)
+		case "batch":
+			body, path, err = batchRequest(sig)
+		default:
+			err = fmt.Errorf("unknown -shape %q (wide | batch)", *shape)
 		}
-		if *endpoint == "" {
-			*endpoint = *base + path
-		}
-		for i := 0; i < *batches; i++ {
-			if err := post(*endpoint, body, *retry); err != nil {
-				return err
-			}
-		}
-		fmt.Printf("sent %d wide %s batches to %s\n", *batches, sig, *endpoint)
-		return nil
+		what = fmt.Sprintf("%s %s batches", *shape, sig)
 	}
-	if *endpoint == "" {
-		*endpoint = *base + "/v1/traces"
-	}
-
-	body, err := ptraceotlp.NewExportRequestFromTraces(fixture.TracesN(*spans)).MarshalProto()
 	if err != nil {
 		return err
 	}
-	for i := 0; i < *batches; i++ {
+	if *endpoint == "" {
+		*endpoint = *base + path
+	}
+	n := 0
+	for deadline := time.Now().Add(*dur); ; n++ {
+		if *dur > 0 && !time.Now().Before(deadline) || *dur == 0 && n == *batches {
+			break
+		}
 		if err := post(*endpoint, body, *retry); err != nil {
 			return err
 		}
 	}
-	fmt.Printf("sent %d batches of %d spans to %s\n", *batches, *spans, *endpoint)
+	fmt.Printf("sent %d %s to %s\n", n, what, *endpoint)
 	return nil
+}
+
+// batchRequest is the realistic batch the signal benchmarks measure (go/bench,
+// signals_test.go) — what `roundtrip.sh profile` loads the collector with, so the PGO
+// profile it records is hot where the benchmarks are.
+func batchRequest(sig spool.Signal) ([]byte, string, error) {
+	switch sig {
+	case spool.Metrics:
+		b, err := pmetricotlp.NewExportRequestFromMetrics(fixture.MetricsBatch(150, 4)).MarshalProto()
+		return b, "/v1/metrics", err
+	case spool.Logs:
+		b, err := plogotlp.NewExportRequestFromLogs(fixture.LogsBatch(500)).MarshalProto()
+		return b, "/v1/logs", err
+	case spool.Profiles:
+		b, err := pprofileotlp.NewExportRequestFromProfiles(fixture.ProfilesBatch(2000, 400, 200)).MarshalProto()
+		return b, "/v1development/profiles", err
+	}
+	return nil, "", fmt.Errorf("no batch request for %s", sig)
 }
 
 // post retries until the collector is listening — ocb starts the binary and the OTLP

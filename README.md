@@ -27,7 +27,8 @@ go/                see go/README.md
   receiver/        dagrfilereceiver  — the spool back into an unmodified pipeline
   store/           the query surface: crash ring, retention, tail sampling
   cmd/otlpdagrctl/ the round-trip harness (send / spool / verify)
-ocb/               collector builder manifest, two pipeline configs, roundtrip.sh
+ocb/               collector builder manifest, pipeline configs, roundtrip.sh,
+                   default.pgo (the collector's PGO profile)
 ```
 
 ```bash
@@ -36,6 +37,7 @@ cd go && go test ./...                                # every gate
 cd go && go test ./bench -bench . -benchmem -benchtime 500x
 cd go && go test ./store -bench . -benchtime 2s        # the store's numbers
 ./ocb/roundtrip.sh                                    # build a collector, round trip through it
+./ocb/roundtrip.sh profile                            # re-record ocb/default.pgo under load, rebuild
 ```
 
 `schema.py` is `packed`, not `frozen+packed`, deliberately — frozen is positional and
@@ -562,6 +564,39 @@ profiles  proto  93,407   28,997 |  52.7us                             |  229us 
   (1.15–1.4× protobuf — Dagr decides LEB-or-fixed per number, protobuf writes varints
   blind) and reading pdata into scratch (17–31 µs a batch).
 
+**With PGO** (`go test ./bench -pgo=<profile>`, a CPU profile of the encode benchmarks),
+`PutLEBAt` — 92 against Go's inline budget of 80, and no rewrite fits — is inlined at its
+hot call sites, and Dagr's encode drops 14–23% while protobuf's moves ~3%:
+
+| one-pass encode vs protobuf | PGO off | PGO on | serializer alone, PGO on |
+|---|---|---|---|
+| traces | 1.43× | **1.22×** | **0.92×** |
+| metrics | 2.05× | **1.81×** | 1.29× |
+| logs | 1.73× | **1.37×** | **0.97×** |
+| profiles | 2.01× | **1.67×** | 1.13× |
+
+Reads are unaffected. The profile has to cover **every** signal: PGO inlines at hot call
+sites, and a traces-only profile did nothing for the other three (`spec/38` §15,
+2026-09-25).
+
+That table is the ceiling — its profile was recorded from the benchmarks it measures.
+**What ships is `ocb/default.pgo`**, recorded from the real collector:
+`./ocb/roundtrip.sh profile` loads it with all four signals at once (the benchmark
+batches, `otlpdagrctl send -shape batch -for`), records 20 s through the collector's
+`pprofextension`, refuses a profile with no samples in any of the four `StreamBuilder`s,
+and rebuilds; `build` copies the profile next to ocb's generated `main` and fails if the
+binary's build info does not show `-pgo`. In that profile the Dagr exporters are ~25% of
+the collector's CPU — the rest is HTTP, the protobuf decode of the incoming request and
+the runtime — so it is less concentrated, and it is what counts:
+
+| same load, 3 000 batches of each signal | PGO off | `ocb/default.pgo` |
+|---|---|---|
+| collector CPU (3 alternating rounds) | 9.88–9.92 s | **9.36–9.48 s (−4.8%)** |
+| `go/bench` one-pass encode, traces / metrics / logs / profiles | — | −14% / −9% / −17% / −10% |
+
+Re-record it after a change to the encoders or the pdata version (`roundtrip.sh profile`,
+~45 s); a stale profile still builds, it just helps less.
+
 **Profiles is faithful to the proto**: every cross-reference stays an integer index into
 a `ProfilesDictionary` table, so the bridge is a straight copy. That is protobuf's
 workaround for having no references — a graph-native variant (node refs, no string table)
@@ -664,7 +699,7 @@ the gate turned up, and the numbers.
 | **Reads, large-array sweep** | **fixed** — 9.3× via the new `All()` / `Iter()`, linear scaling, 0 allocs. `At(i)` in a loop is still O(n²) by construction. |
 | **Validated open** | 3.2× a protobuf decode. Fine in-process, a real cost on an untrusted hop. |
 | **Materialise to pdata** | loses, as designed. Do not build a pipeline that does this. |
-| **Encode from pdata** | **loses, 1.50× — down from 5.3×, allocation-free, one pass over pdata.** The Dagr serializer itself is at **1.07× — parity**; the residue is pdata's own accessor API. Metrics / logs / profiles, also one pass and allocation-free: 2.0× / 1.7× / 2.0× (serializer alone 1.55× / 1.17× / 1.41×). |
+| **Encode from pdata** | **loses, 1.50× — down from 5.3×, allocation-free, one pass over pdata.** The Dagr serializer itself is at **1.07× — parity**; the residue is pdata's own accessor API. Metrics / logs / profiles, also one pass and allocation-free: 2.0× / 1.7× / 2.0× (serializer alone 1.55× / 1.17× / 1.41×). With a PGO build: 1.22× / 1.81× / 1.37× / 1.67× (traces / metrics / logs / profiles). |
 | **Exporter → spool** | **runs, in a real collector.** Framing and appending costs ~10% on top of encoding and allocates nothing; the record stores the encoder's output verbatim. |
 | **Spool → receiver** | **runs, and loses, as designed** — it materialises. It is the compatibility path, not the fast one. |
 | **Crash tail** | **detected, over every truncation of a batch** — and the naive one-record check is not enough to do it (see above). |

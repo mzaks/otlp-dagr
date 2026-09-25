@@ -29,6 +29,11 @@ exporters:
     import: otlpdagr/exporter
     name: dagrfileexporter
 
+extensions:
+  # /debug/pprof on the running collector — `roundtrip.sh profile` records the PGO
+  # profile (ocb/default.pgo) through it.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v${CONTRIB_VERSION}
+
 replaces:
   - otlpdagr => ${ROOT}/go
   # otlp-dagr's generated Go module. It is gitignored: `dagr build` (./regen.sh) writes

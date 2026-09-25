@@ -5,6 +5,7 @@
 #
 #   ./ocb/roundtrip.sh              # build if missing or stale, then round trip
 #   ./ocb/roundtrip.sh build        # build the collector only
+#   ./ocb/roundtrip.sh profile      # record ocb/default.pgo under load, rebuild with it
 #   SPANS=5000 BATCHES=8 ./ocb/roundtrip.sh
 #
 # Needs the network on first run (ocb and the collector's module graph) and a generated
@@ -20,6 +21,10 @@ BATCHES="${BATCHES:-4}"
 WORK="${WORK:-$ROOT/ocb/work}"
 BIN="$ROOT/ocb/build/otelcol-dagr"
 COL="$ROOT/ocb/collector"
+# The PGO profile, committed. `go build` picks up a default.pgo from the main package's
+# directory, and ocb generates that package into ocb/build — so build() copies it there.
+PGO="${PGO:-$ROOT/ocb/default.pgo}"  # PGO=none builds without one
+PROFILE_SECONDS="${PROFILE_SECONDS:-20}"
 
 if [ ! -d "$ROOT/go/gen" ]; then
   echo "roundtrip: go/gen is missing — run ./regen.sh first" >&2
@@ -42,8 +47,52 @@ build() {
     export PATH="$WORK/bin:$PATH"
     ln -sf "$WORK/bin/builder" "$WORK/bin/ocb"
   fi
-  echo "==> building otelcol-dagr"
+  mkdir -p "$ROOT/ocb/build"
+  if [ -f "$PGO" ]; then
+    cp "$PGO" "$ROOT/ocb/build/default.pgo"
+    echo "==> building otelcol-dagr (PGO: ocb/default.pgo)"
+  else
+    rm -f "$ROOT/ocb/build/default.pgo"
+    echo "==> building otelcol-dagr (no ocb/default.pgo — run '$0 profile' to record one)"
+  fi
   ocb --config "$WORK/builder-config.yaml" --skip-strict-versioning
+  # A profile go build did not pick up would be a silent no-op; the build info says.
+  if [ -f "$PGO" ] && ! go version -m "$BIN" | grep -q -- '-pgo='; then
+    echo "roundtrip: the collector was built without ocb/default.pgo" >&2
+    exit 1
+  fi
+}
+
+# profile — load a running collector with every signal at once, record a CPU profile
+# through its pprof extension, and write it to ocb/default.pgo. The load is the benchmark
+# batches (`send -shape batch`), so the profile is hot where go/bench measures. Every
+# signal must be in it: PGO inlines at hot CALL SITES, and a traces-only profile moved
+# the other signals' encode by nothing (spec/38 §15, 2026-09-25).
+profile() {
+  render "$ROOT/ocb/collector-profile.yaml" "$WORK/collector-profile.yaml"
+  (cd go && go build -o "$WORK/otlpdagrctl" ./cmd/otlpdagrctl)
+  local pid; pid=$(run_phase profile "$WORK/collector-profile.yaml")
+  trap 'kill "$pid" 2>/dev/null || true' EXIT
+  local load=$((PROFILE_SECONDS + 6)) senders=()
+  "$WORK/otlpdagrctl" send -signal traces -for "${load}s" & senders+=($!)
+  for s in metrics logs profiles; do
+    "$WORK/otlpdagrctl" send -signal "$s" -shape batch -for "${load}s" & senders+=($!)
+  done
+  sleep 3  # past the senders' first connections
+  echo "==> recording ${PROFILE_SECONDS}s of CPU profile"
+  curl -sf -o "$WORK/default.pgo" "http://127.0.0.1:1777/debug/pprof/profile?seconds=$PROFILE_SECONDS"
+  wait "${senders[@]}"
+  kill -INT "$pid"; wait "$pid" 2>/dev/null || true
+  trap - EXIT
+  # The profile must hold our encoders, not just an idle collector.
+  local top; top=$(go tool pprof -top -cum -nodecount=100000 "$WORK/default.pgo" 2>/dev/null)
+  for f in pdatabridge metricbridge logbridge profilebridge; do
+    grep -qF "$f.(*StreamBuilder)" <<<"$top" || {
+      echo "roundtrip: the profile has no samples in $f — not writing it" >&2; exit 1; }
+  done
+  mv "$WORK/default.pgo" "$PGO"
+  echo "==> wrote ocb/default.pgo ($(wc -c <"$PGO" | tr -d ' ') bytes); rebuilding with it"
+  build
 }
 
 run_phase() {  # run_phase <name> <config> <ready-log-fragment>
@@ -59,11 +108,14 @@ run_phase() {  # run_phase <name> <config> <ready-log-fragment>
 }
 
 [ "${1:-}" = "build" ] && { build; exit 0; }
-# Rebuild when the binary is missing OR older than any Go source it is built from — a
-# stale collector silently round-trips the OLD wire format.
-if [ ! -x "$BIN" ] || [ -n "$(find "$ROOT/go" -name '*.go' -newer "$BIN" -print -quit)" ]; then
+# Rebuild when the binary is missing OR older than any Go source, the manifest or the
+# PGO profile it is built from — a stale collector silently round-trips the OLD wire
+# format.
+if [ ! -x "$BIN" ] || [ -n "$(find "$ROOT/go" -name '*.go' -newer "$BIN" -print -quit)" ] \
+   || [ "$ROOT/ocb/builder-config.yaml" -nt "$BIN" ] || { [ -f "$PGO" ] && [ "$PGO" -nt "$BIN" ]; }; then
   build
 fi
+[ "${1:-}" = "profile" ] && { profile; exit 0; }
 
 SIGNALS="metrics logs profiles"
 rm -rf "$WORK/spans.dagr" "$WORK/out.json"

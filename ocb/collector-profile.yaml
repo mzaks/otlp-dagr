@@ -1,0 +1,47 @@
+# `roundtrip.sh profile` — phase A's pipelines under sustained load, with pprof on, so a
+# CPU profile of the collector can be recorded as ocb/default.pgo (spec/38 §15,
+# 2026-09-25). Every signal is loaded at once: PGO inlines at hot CALL SITES, and a
+# profile missing a signal does nothing for that signal's encoder.
+#
+# The spools go to /dev/null — the encode and append are what is being profiled, and at
+# this rate a real file would grow by gigabytes.
+extensions:
+  pprof:
+    endpoint: 127.0.0.1:1777
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+
+exporters:
+  dagrfile:
+    path: /dev/null
+  dagrfile/metrics:
+    path: /dev/null
+  dagrfile/logs:
+    path: /dev/null
+  dagrfile/profiles:
+    path: /dev/null
+
+service:
+  extensions: [pprof]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [dagrfile]
+    metrics:
+      receivers: [otlp]
+      exporters: [dagrfile/metrics]
+    logs:
+      receivers: [otlp]
+      exporters: [dagrfile/logs]
+    profiles:
+      receivers: [otlp]
+      exporters: [dagrfile/profiles]
