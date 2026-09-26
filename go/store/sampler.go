@@ -135,7 +135,7 @@ func (s *Sampler) Decide(q *Query, now uint64) (*Decisions, error) {
 			sum.LastNano = v
 		}
 		if st, ok := sp.Acc.Status(); ok {
-			if c, ok := st.Code(); ok && c == g.StatusCodeSTATUSCODEERROR {
+			if c, ok := st.Code(); ok && c == g.StatusCodeStatusCodeError {
 				sum.ErrorSpans++
 			}
 		}
