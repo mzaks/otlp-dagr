@@ -4,7 +4,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
+	cb "otlpdagr/commonbridge"
 	"otlpgen/dagr"
+	cd "otlpgen/otlpcommondirect"
 	d "otlpgen/otlplogsdirect"
 )
 
@@ -15,9 +17,9 @@ import (
 // Map values excepted). TestStreamMatches gates the bytes against the value-tree path.
 type StreamBuilder struct {
 	b   *dagr.Builder
-	lv  levels
-	kv  pool[d.KeyValue]
-	ids pool[byte]
+	lv  cb.Levels
+	kv  cb.Pool[cd.KeyValue]
+	ids cb.Pool[byte]
 }
 
 func NewStreamBuilder() *StreamBuilder { return &StreamBuilder{b: dagr.NewBuilder(0)} }
@@ -34,7 +36,7 @@ func (w *StreamBuilder) BuildAppend(dst []byte, ld plog.Logs) []byte {
 	}
 	buf, i = dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
 	b.Put(buf, i)
-	return finishGraph(b, dst)
+	return cb.FinishGraph(b, dst)
 }
 
 // AppendRecord encodes ld as the content of one LogRecordLog `Batch` record — what
@@ -46,7 +48,7 @@ func (w *StreamBuilder) AppendRecord(dst []byte, receivedUnixNano uint64, ld plo
 	before := len(buf) - i
 	buf, i = w.putResourceLogs(ld, b, buf, i)
 	buf, i = dagr.PutLEBAt(buf, i, 5) // Batch.resource_logs, field 2 (required)
-	buf, i = putRecordEnvelope(buf, i, before, receivedUnixNano, uint32(ld.LogRecordCount()))
+	buf, i = cb.PutRecordEnvelope(buf, i, before, receivedUnixNano, uint32(ld.LogRecordCount()))
 	b.Put(buf, i)
 	return b.AppendTo(dst)
 }
@@ -54,43 +56,43 @@ func (w *StreamBuilder) AppendRecord(dst []byte, receivedUnixNano uint64, ld plo
 // putResourceLogs writes the resource_logs array content (no field tag).
 func (w *StreamBuilder) putResourceLogs(ld plog.Logs, b *dagr.Builder, buf []byte, i int) ([]byte, int) {
 	rls := ld.ResourceLogs()
-	return putArray(buf, i, rls.Len(), func(k int, buf []byte, i int) ([]byte, int) {
+	return cb.PutArray(buf, i, rls.Len(), func(k int, buf []byte, i int) ([]byte, int) {
 		rl := rls.At(k)
 		sls := rl.ScopeLogs()
-		return putLevel(buf, i, rl.SchemaUrl(), sls.Len(),
+		return cb.PutLevel(buf, i, rl.SchemaUrl(), sls.Len(),
 			func(k int, buf []byte, i int) ([]byte, int) {
 				sl := sls.At(k)
 				lrs := sl.LogRecords()
-				return putLevel(buf, i, sl.SchemaUrl(), lrs.Len(),
+				return cb.PutLevel(buf, i, sl.SchemaUrl(), lrs.Len(),
 					func(k int, buf []byte, i int) ([]byte, int) {
 						return d.PutLogRecord(w.logRecordValue(lrs.At(k)), b, buf, i)
 					},
-					func(buf []byte, i int) ([]byte, int) { return w.lv.putScope(sl.Scope(), b, buf, i) })
+					func(buf []byte, i int) ([]byte, int) { return w.lv.PutScope(sl.Scope(), b, buf, i) })
 			},
-			func(buf []byte, i int) ([]byte, int) { return w.lv.putResource(rl.Resource(), b, buf, i) })
+			func(buf []byte, i int) ([]byte, int) { return w.lv.PutResource(rl.Resource(), b, buf, i) })
 	})
 }
 
 // logRecordValue is toLogRecord over reused scratch: the same value, so the same bytes.
 func (w *StreamBuilder) logRecordValue(r plog.LogRecord) d.LogRecord {
-	w.kv.reset()
-	w.ids.reset()
+	w.kv.Reset()
+	w.ids.Reset()
 	tid, sid := r.TraceID(), r.SpanID()
 	out := d.LogRecord{
-		TimeUnixNano:           nonZero(uint64(r.Timestamp())),
-		ObservedTimeUnixNano:   nonZero(uint64(r.ObservedTimestamp())),
-		SeverityNumber:         nz(d.SeverityNumber(r.SeverityNumber())),
-		SeverityText:           nonEmpty(r.SeverityText()),
-		Attributes:             attrsInto(&w.kv, r.Attributes()),
-		DroppedAttributesCount: nonZeroU32(r.DroppedAttributesCount()),
-		Flags:                  nonZeroU32(uint32(r.Flags())),
-		TraceID:                idInto(&w.ids, tid[:]),
-		SpanID:                 idInto(&w.ids, sid[:]),
-		EventName:              nonEmpty(r.EventName()),
+		TimeUnixNano:           cb.NonZero(uint64(r.Timestamp())),
+		ObservedTimeUnixNano:   cb.NonZero(uint64(r.ObservedTimestamp())),
+		SeverityNumber:         cb.NZ(d.SeverityNumber(r.SeverityNumber())),
+		SeverityText:           cb.NonEmpty(r.SeverityText()),
+		Attributes:             cb.AttrsInto(&w.kv, r.Attributes()),
+		DroppedAttributesCount: cb.NonZeroU32(r.DroppedAttributesCount()),
+		Flags:                  cb.NonZeroU32(uint32(r.Flags())),
+		TraceID:                cb.IDInto(&w.ids, tid[:]),
+		SpanID:                 cb.IDInto(&w.ids, sid[:]),
+		EventName:              cb.NonEmpty(r.EventName()),
 	}
 	if r.Body().Type() != pcommon.ValueTypeEmpty {
-		if v, ok := attrValue(r.Body()); ok {
-			out.Body = some(v)
+		if v, ok := cb.AttrValue(r.Body()); ok {
+			out.Body = cb.Some(v)
 		}
 	}
 	return out

@@ -6,6 +6,8 @@ import (
 
 	"otlpgen/metriclog"
 	g "otlpgen/otlpmetrics"
+
+	cb "otlpdagr/commonbridge"
 )
 
 // ToMetrics materialises an OtlpMetrics buffer into pdata, for handing off to an
@@ -25,13 +27,13 @@ func FromRecord(record []byte) pmetric.Metrics {
 	return putMetrics(metriclog.NewBatchAccessor(record, 0).ResourceMetricsIter())
 }
 
-func putMetrics[I any, P cursor[I, g.ResourceMetricsAccessor]](it I) pmetric.Metrics {
+func putMetrics[I any, P cb.Cursor[I, g.ResourceMetricsAccessor]](it I) pmetric.Metrics {
 	c := P(&it)
 	md := pmetric.NewMetrics()
 	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		rm := md.ResourceMetrics().AppendEmpty()
 		if r, ok := src.Resource(); ok {
-			putResource(rm.Resource(), r)
+			cb.DecodeResource(rm.Resource(), r)
 		}
 		if v, ok := src.SchemaURL(); ok {
 			rm.SetSchemaUrl(v)
@@ -40,7 +42,7 @@ func putMetrics[I any, P cursor[I, g.ResourceMetricsAccessor]](it I) pmetric.Met
 		for smSrc, ok := it.Next(); ok; smSrc, ok = it.Next() {
 			sm := rm.ScopeMetrics().AppendEmpty()
 			if sc, ok := smSrc.Scope(); ok {
-				putScope(sm.Scope(), sc)
+				cb.DecodeScope(sm.Scope(), sc)
 			}
 			if v, ok := smSrc.SchemaURL(); ok {
 				sm.SetSchemaUrl(v)
@@ -64,7 +66,7 @@ func putMetric(dst pmetric.Metric, src g.MetricAccessor) {
 	if v, ok := src.Unit(); ok {
 		dst.SetUnit(v)
 	}
-	putAttrs(dst.Metadata(), src.MetadataIter())
+	cb.DecodeAttrs(dst.Metadata(), src.MetadataIter())
 	data, ok := src.Data()
 	if !ok {
 		return // MetricTypeEmpty
@@ -114,12 +116,12 @@ func putMetric(dst pmetric.Metric, src g.MetricAccessor) {
 	}
 }
 
-func putNumberPoints[I any, P cursor[I, g.NumberDataPointAccessor]](dst pmetric.NumberDataPointSlice, it I) {
+func putNumberPoints[I any, P cb.Cursor[I, g.NumberDataPointAccessor]](dst pmetric.NumberDataPointSlice, it I) {
 	c := P(&it)
 	dst.EnsureCapacity(c.Len())
 	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		p := dst.AppendEmpty()
-		putAttrs(p.Attributes(), src.AttributesIter())
+		cb.DecodeAttrs(p.Attributes(), src.AttributesIter())
 		if v, ok := src.StartTimeUnixNano(); ok {
 			p.SetStartTimestamp(pcommon.Timestamp(v))
 		}
@@ -142,7 +144,7 @@ func putNumberPoints[I any, P cursor[I, g.NumberDataPointAccessor]](dst pmetric.
 }
 
 func putHistogramPoint(p pmetric.HistogramDataPoint, src g.HistogramDataPointAccessor) {
-	putAttrs(p.Attributes(), src.AttributesIter())
+	cb.DecodeAttrs(p.Attributes(), src.AttributesIter())
 	if v, ok := src.StartTimeUnixNano(); ok {
 		p.SetStartTimestamp(pcommon.Timestamp(v))
 	}
@@ -184,7 +186,7 @@ func putHistogramPoint(p pmetric.HistogramDataPoint, src g.HistogramDataPointAcc
 }
 
 func putExpHistogramPoint(p pmetric.ExponentialHistogramDataPoint, src g.ExponentialHistogramDataPointAccessor) {
-	putAttrs(p.Attributes(), src.AttributesIter())
+	cb.DecodeAttrs(p.Attributes(), src.AttributesIter())
 	if v, ok := src.StartTimeUnixNano(); ok {
 		p.SetStartTimestamp(pcommon.Timestamp(v))
 	}
@@ -239,7 +241,7 @@ func putBuckets(dst pmetric.ExponentialHistogramDataPointBuckets, src g.BucketsA
 }
 
 func putSummaryPoint(p pmetric.SummaryDataPoint, src g.SummaryDataPointAccessor) {
-	putAttrs(p.Attributes(), src.AttributesIter())
+	cb.DecodeAttrs(p.Attributes(), src.AttributesIter())
 	if v, ok := src.StartTimeUnixNano(); ok {
 		p.SetStartTimestamp(pcommon.Timestamp(v))
 	}
@@ -271,7 +273,7 @@ func putSummaryPoint(p pmetric.SummaryDataPoint, src g.SummaryDataPointAccessor)
 	}
 }
 
-func putExemplars[I any, P cursor[I, g.ExemplarAccessor]](dst pmetric.ExemplarSlice, it I) {
+func putExemplars[I any, P cb.Cursor[I, g.ExemplarAccessor]](dst pmetric.ExemplarSlice, it I) {
 	c := P(&it)
 	if c.Len() == 0 {
 		return
@@ -279,15 +281,15 @@ func putExemplars[I any, P cursor[I, g.ExemplarAccessor]](dst pmetric.ExemplarSl
 	dst.EnsureCapacity(c.Len())
 	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		e := dst.AppendEmpty()
-		putAttrs(e.FilteredAttributes(), src.FilteredAttributesIter())
+		cb.DecodeAttrs(e.FilteredAttributes(), src.FilteredAttributesIter())
 		if v, ok := src.TimeUnixNano(); ok {
 			e.SetTimestamp(pcommon.Timestamp(v))
 		}
 		if v, ok := src.SpanID(); ok {
-			e.SetSpanID(toSpanID(v))
+			e.SetSpanID(cb.ToSpanID(v))
 		}
 		if v, ok := src.TraceID(); ok {
-			e.SetTraceID(toTraceID(v))
+			e.SetTraceID(cb.ToTraceID(v))
 		}
 		if v, ok := src.Value(); ok {
 			switch v.Tag() {

@@ -769,8 +769,10 @@ library = Library(
         # The Go emitter always writes the lazy accessors, the arena, the serializer
         # and the direct builder (spec/37 §16) — there is no feature list to opt into.
         # `package-per-graph`: each signal is its own Go package (`otlpgen/otlptraces`,
-        # `otlpgen/otlpmetrics`, ...), because each carries its own flattened copy of
-        # OtlpCommon and profiles has a `Link` of its own.
+        # `otlpgen/otlpmetrics`, ...) — profiles has a `Link` of its own — and the
+        # imported OtlpCommon is emitted once, as `otlpgen/otlpcommon` (+ `…direct`), which
+        # the four signal packages refer to (Dagr spec/37 §18). OtlpProfilesGraph holds it
+        # as vtable nodes, a different wire shape, and keeps its own copy.
         Go(out="go/gen", package="otlpgen", layout="package-per-graph"),
         # The Rust crate carries the lazy reader and spec/19's lazy Arrow producer
         # (`arrow` implies `lazy`): one normalised table per node type, and `AnyValue` —

@@ -6,6 +6,8 @@ import (
 
 	g "otlpgen/otlptraces"
 	"otlpgen/spanlog"
+
+	cb "otlpdagr/commonbridge"
 )
 
 // ToTraces materialises an OTLP-on-Dagr buffer into pdata, for handing off to an
@@ -31,13 +33,13 @@ func FromRecord(record []byte) ptrace.Traces {
 	return putTraces(spanlog.NewBatchAccessor(record, 0).ResourceSpansIter())
 }
 
-func putTraces[I any, P cursor[I, g.ResourceSpansAccessor]](it I) ptrace.Traces {
+func putTraces[I any, P cb.Cursor[I, g.ResourceSpansAccessor]](it I) ptrace.Traces {
 	c := P(&it)
 	td := ptrace.NewTraces()
 	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		rs := td.ResourceSpans().AppendEmpty()
 		if r, ok := src.Resource(); ok {
-			putResource(rs.Resource(), r)
+			cb.DecodeResource(rs.Resource(), r)
 		}
 		if v, ok := src.SchemaURL(); ok {
 			rs.SetSchemaUrl(v)
@@ -46,7 +48,7 @@ func putTraces[I any, P cursor[I, g.ResourceSpansAccessor]](it I) ptrace.Traces 
 		for ssSrc, ok := it.Next(); ok; ssSrc, ok = it.Next() {
 			ss := rs.ScopeSpans().AppendEmpty()
 			if sc, ok := ssSrc.Scope(); ok {
-				putScope(ss.Scope(), sc)
+				cb.DecodeScope(ss.Scope(), sc)
 			}
 			if v, ok := ssSrc.SchemaURL(); ok {
 				ss.SetSchemaUrl(v)
@@ -97,7 +99,7 @@ func toPSpan(src g.SpanAccessor, sp ptrace.Span) {
 	if v, ok := src.EndTimeUnixNano(); ok {
 		sp.SetEndTimestamp(pcommon.Timestamp(v))
 	}
-	putAttrs(sp.Attributes(), src.AttributesIter())
+	cb.DecodeAttrs(sp.Attributes(), src.AttributesIter())
 	if v, ok := src.DroppedAttributesCount(); ok {
 		sp.SetDroppedAttributesCount(v)
 	}
@@ -112,7 +114,7 @@ func toPSpan(src g.SpanAccessor, sp ptrace.Span) {
 			if v, ok := e.Name(); ok {
 				ev.SetName(v)
 			}
-			putAttrs(ev.Attributes(), e.AttributesIter())
+			cb.DecodeAttrs(ev.Attributes(), e.AttributesIter())
 			if v, ok := e.DroppedAttributesCount(); ok {
 				ev.SetDroppedAttributesCount(v)
 			}
@@ -139,7 +141,7 @@ func toPSpan(src g.SpanAccessor, sp ptrace.Span) {
 			if v, ok := l.TraceState(); ok {
 				lk.TraceState().FromRaw(v)
 			}
-			putAttrs(lk.Attributes(), l.AttributesIter())
+			cb.DecodeAttrs(lk.Attributes(), l.AttributesIter())
 			if v, ok := l.DroppedAttributesCount(); ok {
 				lk.SetDroppedAttributesCount(v)
 			}

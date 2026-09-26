@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 
+	"otlpdagr/commonbridge"
 	"otlpdagr/internal/fixture"
 	"otlpdagr/pdatabridge"
 )
@@ -119,7 +120,7 @@ func TestDeepNestingIsBounded(t *testing.T) {
 	in := ptrace.NewTraces()
 	sp := in.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
 	cur := sp.Attributes().PutEmptySlice("deep")
-	for i := 0; i < pdatabridge.MaxValueDepth*3; i++ {
+	for i := 0; i < commonbridge.MaxValueDepth*3; i++ {
 		cur = cur.AppendEmpty().SetEmptySlice()
 	}
 	cur.AppendEmpty().SetStr("bottom")
@@ -137,8 +138,8 @@ func TestDeepNestingIsBounded(t *testing.T) {
 		v = v.Slice().At(0)
 		depth++
 	}
-	if depth > pdatabridge.MaxValueDepth {
-		t.Fatalf("decoded %d levels deep, past the %d bound", depth, pdatabridge.MaxValueDepth)
+	if depth > commonbridge.MaxValueDepth {
+		t.Fatalf("decoded %d levels deep, past the %d bound", depth, commonbridge.MaxValueDepth)
 	}
 	if depth < 2 {
 		t.Fatalf("only %d levels survived — the bound is cutting real data", depth)

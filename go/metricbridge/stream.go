@@ -4,7 +4,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
+	cb "otlpdagr/commonbridge"
 	"otlpgen/dagr"
+	cd "otlpgen/otlpcommondirect"
 	d "otlpgen/otlpmetricsdirect"
 )
 
@@ -17,18 +19,18 @@ import (
 // value-tree path.
 type StreamBuilder struct {
 	b  *dagr.Builder
-	lv levels
+	lv cb.Levels
 
-	kv   pool[d.KeyValue]
-	u64  pool[uint64]
-	f64  pool[float64]
-	ids  pool[byte]
-	num  pool[d.NumberDataPoint]
-	hist pool[d.HistogramDataPoint]
-	exp  pool[d.ExponentialHistogramDataPoint]
-	sum  pool[d.SummaryDataPoint]
-	ex   pool[d.Exemplar]
-	q    pool[d.ValueAtQuantile]
+	kv   cb.Pool[cd.KeyValue]
+	u64  cb.Pool[uint64]
+	f64  cb.Pool[float64]
+	ids  cb.Pool[byte]
+	num  cb.Pool[d.NumberDataPoint]
+	hist cb.Pool[d.HistogramDataPoint]
+	exp  cb.Pool[d.ExponentialHistogramDataPoint]
+	sum  cb.Pool[d.SummaryDataPoint]
+	ex   cb.Pool[d.Exemplar]
+	q    cb.Pool[d.ValueAtQuantile]
 
 	// The MetricData variant of the metric being written. The union points at it
 	// (`…Ref`) rather than copying it to the heap; one metric is in flight at a time.
@@ -52,7 +54,7 @@ func (w *StreamBuilder) BuildAppend(dst []byte, md pmetric.Metrics) []byte {
 	}
 	buf, i = dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
 	b.Put(buf, i)
-	return finishGraph(b, dst)
+	return cb.FinishGraph(b, dst)
 }
 
 // AppendRecord encodes md as the content of one MetricLog `Batch` record — what
@@ -64,7 +66,7 @@ func (w *StreamBuilder) AppendRecord(dst []byte, receivedUnixNano uint64, md pme
 	before := len(buf) - i
 	buf, i = w.putResourceMetrics(md, b, buf, i)
 	buf, i = dagr.PutLEBAt(buf, i, 5) // Batch.resource_metrics, field 2 (required)
-	buf, i = putRecordEnvelope(buf, i, before, receivedUnixNano, uint32(md.DataPointCount()))
+	buf, i = cb.PutRecordEnvelope(buf, i, before, receivedUnixNano, uint32(md.DataPointCount()))
 	b.Put(buf, i)
 	return b.AppendTo(dst)
 }
@@ -72,73 +74,73 @@ func (w *StreamBuilder) AppendRecord(dst []byte, receivedUnixNano uint64, md pme
 // putResourceMetrics writes the resource_metrics array content (no field tag).
 func (w *StreamBuilder) putResourceMetrics(md pmetric.Metrics, b *dagr.Builder, buf []byte, i int) ([]byte, int) {
 	rms := md.ResourceMetrics()
-	return putArray(buf, i, rms.Len(), func(k int, buf []byte, i int) ([]byte, int) {
+	return cb.PutArray(buf, i, rms.Len(), func(k int, buf []byte, i int) ([]byte, int) {
 		rm := rms.At(k)
 		sms := rm.ScopeMetrics()
-		return putLevel(buf, i, rm.SchemaUrl(), sms.Len(),
+		return cb.PutLevel(buf, i, rm.SchemaUrl(), sms.Len(),
 			func(k int, buf []byte, i int) ([]byte, int) {
 				sm := sms.At(k)
 				ms := sm.Metrics()
-				return putLevel(buf, i, sm.SchemaUrl(), ms.Len(),
+				return cb.PutLevel(buf, i, sm.SchemaUrl(), ms.Len(),
 					func(k int, buf []byte, i int) ([]byte, int) {
 						return d.PutMetric(w.metricValue(ms.At(k)), b, buf, i)
 					},
-					func(buf []byte, i int) ([]byte, int) { return w.lv.putScope(sm.Scope(), b, buf, i) })
+					func(buf []byte, i int) ([]byte, int) { return w.lv.PutScope(sm.Scope(), b, buf, i) })
 			},
-			func(buf []byte, i int) ([]byte, int) { return w.lv.putResource(rm.Resource(), b, buf, i) })
+			func(buf []byte, i int) ([]byte, int) { return w.lv.PutResource(rm.Resource(), b, buf, i) })
 	})
 }
 
 func (w *StreamBuilder) reset() {
-	w.kv.reset()
-	w.u64.reset()
-	w.f64.reset()
-	w.ids.reset()
-	w.num.reset()
-	w.hist.reset()
-	w.exp.reset()
-	w.sum.reset()
-	w.ex.reset()
-	w.q.reset()
+	w.kv.Reset()
+	w.u64.Reset()
+	w.f64.Reset()
+	w.ids.Reset()
+	w.num.Reset()
+	w.hist.Reset()
+	w.exp.Reset()
+	w.sum.Reset()
+	w.ex.Reset()
+	w.q.Reset()
 }
 
 // metricValue is toMetric over reused scratch: the same value, so the same bytes.
 func (w *StreamBuilder) metricValue(m pmetric.Metric) d.Metric {
 	w.reset()
 	out := d.Metric{
-		Name:            nonEmpty(m.Name()),
-		DescriptionText: nonEmpty(m.Description()),
-		Unit:            nonEmpty(m.Unit()),
-		Metadata:        attrsInto(&w.kv, m.Metadata()),
+		Name:            cb.NonEmpty(m.Name()),
+		DescriptionText: cb.NonEmpty(m.Description()),
+		Unit:            cb.NonEmpty(m.Unit()),
+		Metadata:        cb.AttrsInto(&w.kv, m.Metadata()),
 	}
 	switch m.Type() {
 	case pmetric.MetricTypeGauge:
 		w.gaugeNode = d.Gauge{DataPoints: w.numberPoints(m.Gauge().DataPoints())}
-		out.Data = some(d.MetricDataGaugeRef(&w.gaugeNode))
+		out.Data = cb.Some(d.MetricDataGaugeRef(&w.gaugeNode))
 	case pmetric.MetricTypeSum:
 		s := m.Sum()
 		w.sumNode = d.Sum{
 			DataPoints:             w.numberPoints(s.DataPoints()),
-			AggregationTemporality: nz(d.AggregationTemporality(s.AggregationTemporality())),
-			IsMonotonic:            nz(s.IsMonotonic()),
+			AggregationTemporality: cb.NZ(d.AggregationTemporality(s.AggregationTemporality())),
+			IsMonotonic:            cb.NZ(s.IsMonotonic()),
 		}
-		out.Data = some(d.MetricDataSumRef(&w.sumNode))
+		out.Data = cb.Some(d.MetricDataSumRef(&w.sumNode))
 	case pmetric.MetricTypeHistogram:
 		h := m.Histogram()
 		w.histoNode = d.Histogram{
 			DataPoints:             w.histogramPoints(h.DataPoints()),
-			AggregationTemporality: nz(d.AggregationTemporality(h.AggregationTemporality())),
+			AggregationTemporality: cb.NZ(d.AggregationTemporality(h.AggregationTemporality())),
 		}
-		out.Data = some(d.MetricDataHistogramRef(&w.histoNode))
+		out.Data = cb.Some(d.MetricDataHistogramRef(&w.histoNode))
 	case pmetric.MetricTypeExponentialHistogram:
 		h := m.ExponentialHistogram()
 		w.expoNode = d.ExponentialHistogram{
 			DataPoints:             w.expHistogramPoints(h.DataPoints()),
-			AggregationTemporality: nz(d.AggregationTemporality(h.AggregationTemporality())),
+			AggregationTemporality: cb.NZ(d.AggregationTemporality(h.AggregationTemporality())),
 		}
-		out.Data = some(d.MetricDataExponentialHistogramRef(&w.expoNode))
+		out.Data = cb.Some(d.MetricDataExponentialHistogramRef(&w.expoNode))
 	case pmetric.MetricTypeSummary:
-		out.Data = some(d.MetricDataSummary(w.summaryPoints(m.Summary().DataPoints()).V))
+		out.Data = cb.Some(d.MetricDataSummary(w.summaryPoints(m.Summary().DataPoints()).V))
 	}
 	return out
 }
@@ -147,112 +149,112 @@ func (w *StreamBuilder) u64s(s pcommon.UInt64Slice) dagr.Opt[[]uint64] {
 	if s.Len() == 0 {
 		return dagr.Opt[[]uint64]{}
 	}
-	dst := w.u64.take(s.Len())
+	dst := w.u64.Take(s.Len())
 	for k := range dst {
 		dst[k] = s.At(k)
 	}
-	return some(dst)
+	return cb.Some(dst)
 }
 
 func (w *StreamBuilder) f64s(s pcommon.Float64Slice) dagr.Opt[[]float64] {
 	if s.Len() == 0 {
 		return dagr.Opt[[]float64]{}
 	}
-	dst := w.f64.take(s.Len())
+	dst := w.f64.Take(s.Len())
 	for k := range dst {
 		dst[k] = s.At(k)
 	}
-	return some(dst)
+	return cb.Some(dst)
 }
 
 func (w *StreamBuilder) numberPoints(ps pmetric.NumberDataPointSlice) dagr.Opt[[]d.NumberDataPoint] {
 	if ps.Len() == 0 {
 		return dagr.Opt[[]d.NumberDataPoint]{}
 	}
-	out := w.num.take(ps.Len())
+	out := w.num.Take(ps.Len())
 	for k := range out {
 		p := ps.At(k)
 		dp := d.NumberDataPoint{
-			Attributes:        attrsInto(&w.kv, p.Attributes()),
-			StartTimeUnixNano: nonZero(uint64(p.StartTimestamp())),
-			TimeUnixNano:      nonZero(uint64(p.Timestamp())),
+			Attributes:        cb.AttrsInto(&w.kv, p.Attributes()),
+			StartTimeUnixNano: cb.NonZero(uint64(p.StartTimestamp())),
+			TimeUnixNano:      cb.NonZero(uint64(p.Timestamp())),
 			Exemplars:         w.exemplars(p.Exemplars()),
-			Flags:             nonZeroU32(uint32(p.Flags())),
+			Flags:             cb.NonZeroU32(uint32(p.Flags())),
 		}
 		switch p.ValueType() {
 		case pmetric.NumberDataPointValueTypeDouble:
-			dp.Value = some(d.NumberValueAsDouble(p.DoubleValue()))
+			dp.Value = cb.Some(d.NumberValueAsDouble(p.DoubleValue()))
 		case pmetric.NumberDataPointValueTypeInt:
-			dp.Value = some(d.NumberValueAsInt(p.IntValue()))
+			dp.Value = cb.Some(d.NumberValueAsInt(p.IntValue()))
 		}
 		out[k] = dp
 	}
-	return some(out)
+	return cb.Some(out)
 }
 
 func (w *StreamBuilder) histogramPoints(ps pmetric.HistogramDataPointSlice) dagr.Opt[[]d.HistogramDataPoint] {
 	if ps.Len() == 0 {
 		return dagr.Opt[[]d.HistogramDataPoint]{}
 	}
-	out := w.hist.take(ps.Len())
+	out := w.hist.Take(ps.Len())
 	for k := range out {
 		p := ps.At(k)
 		dp := d.HistogramDataPoint{
-			Attributes:        attrsInto(&w.kv, p.Attributes()),
-			StartTimeUnixNano: nonZero(uint64(p.StartTimestamp())),
-			TimeUnixNano:      nonZero(uint64(p.Timestamp())),
-			Count:             nonZero(p.Count()),
+			Attributes:        cb.AttrsInto(&w.kv, p.Attributes()),
+			StartTimeUnixNano: cb.NonZero(uint64(p.StartTimestamp())),
+			TimeUnixNano:      cb.NonZero(uint64(p.Timestamp())),
+			Count:             cb.NonZero(p.Count()),
 			BucketCounts:      w.u64s(p.BucketCounts()),
 			ExplicitBounds:    w.f64s(p.ExplicitBounds()),
 			Exemplars:         w.exemplars(p.Exemplars()),
-			Flags:             nonZeroU32(uint32(p.Flags())),
+			Flags:             cb.NonZeroU32(uint32(p.Flags())),
 		}
 		if p.HasSum() {
-			dp.Sum = some(p.Sum())
+			dp.Sum = cb.Some(p.Sum())
 		}
 		if p.HasMin() {
-			dp.Min = some(p.Min())
+			dp.Min = cb.Some(p.Min())
 		}
 		if p.HasMax() {
-			dp.Max = some(p.Max())
+			dp.Max = cb.Some(p.Max())
 		}
 		out[k] = dp
 	}
-	return some(out)
+	return cb.Some(out)
 }
 
 func (w *StreamBuilder) expHistogramPoints(ps pmetric.ExponentialHistogramDataPointSlice) dagr.Opt[[]d.ExponentialHistogramDataPoint] {
 	if ps.Len() == 0 {
 		return dagr.Opt[[]d.ExponentialHistogramDataPoint]{}
 	}
-	out := w.exp.take(ps.Len())
+	out := w.exp.Take(ps.Len())
 	for k := range out {
 		p := ps.At(k)
 		dp := d.ExponentialHistogramDataPoint{
-			Attributes:        attrsInto(&w.kv, p.Attributes()),
-			StartTimeUnixNano: nonZero(uint64(p.StartTimestamp())),
-			TimeUnixNano:      nonZero(uint64(p.Timestamp())),
-			Count:             nonZero(p.Count()),
-			Scale:             nz(p.Scale()),
-			ZeroCount:         nonZero(p.ZeroCount()),
+			Attributes:        cb.AttrsInto(&w.kv, p.Attributes()),
+			StartTimeUnixNano: cb.NonZero(uint64(p.StartTimestamp())),
+			TimeUnixNano:      cb.NonZero(uint64(p.Timestamp())),
+			Count:             cb.NonZero(p.Count()),
+			Scale:             cb.NZ(p.Scale()),
+			ZeroCount:         cb.NonZero(p.ZeroCount()),
 			Positive:          w.buckets(p.Positive()),
 			Negative:          w.buckets(p.Negative()),
-			Flags:             nonZeroU32(uint32(p.Flags())),
+			Flags:             cb.NonZeroU32(uint32(p.Flags())),
 			Exemplars:         w.exemplars(p.Exemplars()),
-			ZeroThreshold:     nz(p.ZeroThreshold()),
+			ZeroThreshold:     cb.NZ(p.ZeroThreshold()),
 		}
 		if p.HasSum() {
-			dp.Sum = some(p.Sum())
+			dp.Sum = cb.Some(p.Sum())
 		}
 		if p.HasMin() {
-			dp.Min = some(p.Min())
+			dp.Min = cb.Some(p.Min())
 		}
 		if p.HasMax() {
-			dp.Max = some(p.Max())
+			dp.Max = cb.Some(p.Max())
 		}
 		out[k] = dp
 	}
-	return some(out)
+	return cb.Some(out)
 }
 
 // buckets: absent when both fields are at their zero value, as in the value-tree bridge.
@@ -260,60 +262,60 @@ func (w *StreamBuilder) buckets(bk pmetric.ExponentialHistogramDataPointBuckets)
 	if bk.Offset() == 0 && bk.BucketCounts().Len() == 0 {
 		return dagr.Opt[d.Buckets]{}
 	}
-	return some(d.Buckets{Offset: nz(bk.Offset()), BucketCounts: w.u64s(bk.BucketCounts())})
+	return cb.Some(d.Buckets{Offset: cb.NZ(bk.Offset()), BucketCounts: w.u64s(bk.BucketCounts())})
 }
 
 func (w *StreamBuilder) summaryPoints(ps pmetric.SummaryDataPointSlice) dagr.Opt[[]d.SummaryDataPoint] {
 	if ps.Len() == 0 {
 		return dagr.Opt[[]d.SummaryDataPoint]{}
 	}
-	out := w.sum.take(ps.Len())
+	out := w.sum.Take(ps.Len())
 	for k := range out {
 		p := ps.At(k)
 		qs := p.QuantileValues()
 		var qv dagr.Opt[[]d.ValueAtQuantile]
 		if qs.Len() > 0 {
-			l := w.q.take(qs.Len())
+			l := w.q.Take(qs.Len())
 			for j := range l {
 				q := qs.At(j)
-				l[j] = d.ValueAtQuantile{Quantile: nz(q.Quantile()), Value: nz(q.Value())}
+				l[j] = d.ValueAtQuantile{Quantile: cb.NZ(q.Quantile()), Value: cb.NZ(q.Value())}
 			}
-			qv = some(l)
+			qv = cb.Some(l)
 		}
 		out[k] = d.SummaryDataPoint{
-			Attributes:        attrsInto(&w.kv, p.Attributes()),
-			StartTimeUnixNano: nonZero(uint64(p.StartTimestamp())),
-			TimeUnixNano:      nonZero(uint64(p.Timestamp())),
-			Count:             nonZero(p.Count()),
-			Sum:               nz(p.Sum()),
+			Attributes:        cb.AttrsInto(&w.kv, p.Attributes()),
+			StartTimeUnixNano: cb.NonZero(uint64(p.StartTimestamp())),
+			TimeUnixNano:      cb.NonZero(uint64(p.Timestamp())),
+			Count:             cb.NonZero(p.Count()),
+			Sum:               cb.NZ(p.Sum()),
 			QuantileValues:    qv,
-			Flags:             nonZeroU32(uint32(p.Flags())),
+			Flags:             cb.NonZeroU32(uint32(p.Flags())),
 		}
 	}
-	return some(out)
+	return cb.Some(out)
 }
 
 func (w *StreamBuilder) exemplars(es pmetric.ExemplarSlice) dagr.Opt[[]d.Exemplar] {
 	if es.Len() == 0 {
 		return dagr.Opt[[]d.Exemplar]{}
 	}
-	out := w.ex.take(es.Len())
+	out := w.ex.Take(es.Len())
 	for k := range out {
 		e := es.At(k)
 		sid, tid := e.SpanID(), e.TraceID()
 		ex := d.Exemplar{
-			FilteredAttributes: attrsInto(&w.kv, e.FilteredAttributes()),
-			TimeUnixNano:       nonZero(uint64(e.Timestamp())),
-			SpanID:             idInto(&w.ids, sid[:]),
-			TraceID:            idInto(&w.ids, tid[:]),
+			FilteredAttributes: cb.AttrsInto(&w.kv, e.FilteredAttributes()),
+			TimeUnixNano:       cb.NonZero(uint64(e.Timestamp())),
+			SpanID:             cb.IDInto(&w.ids, sid[:]),
+			TraceID:            cb.IDInto(&w.ids, tid[:]),
 		}
 		switch e.ValueType() {
 		case pmetric.ExemplarValueTypeDouble:
-			ex.Value = some(d.NumberValueAsDouble(e.DoubleValue()))
+			ex.Value = cb.Some(d.NumberValueAsDouble(e.DoubleValue()))
 		case pmetric.ExemplarValueTypeInt:
-			ex.Value = some(d.NumberValueAsInt(e.IntValue()))
+			ex.Value = cb.Some(d.NumberValueAsInt(e.IntValue()))
 		}
 		out[k] = ex
 	}
-	return some(out)
+	return cb.Some(out)
 }

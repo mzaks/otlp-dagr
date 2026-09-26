@@ -6,13 +6,14 @@
 // pdata for handing a batch to an unmodified pipeline; like pdatabridge.ToTraces it is
 // the compatibility path, not the one otlp-dagr exists for.
 //
-// The shared messages (attributes, Resource, InstrumentationScope) come from
-// common_gen.go, which regen.sh copies from pdatabridge/common.go.
+// The shared messages (attributes, Resource, InstrumentationScope) convert through
+// package commonbridge.
 package metricbridge
 
 import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
+	cb "otlpdagr/commonbridge"
 	"otlpgen/dagr"
 	d "otlpgen/otlpmetricsdirect"
 )
@@ -36,18 +37,18 @@ func ToValue(md pmetric.Metrics) d.MetricsData {
 				outM = append(outM, toMetric(ms.At(k)))
 			}
 			outSM = append(outSM, d.ScopeMetrics{
-				Scope:     some(scope(sm.Scope())),
-				Metrics:   optSlice(outM),
-				SchemaURL: nonEmpty(sm.SchemaUrl()),
+				Scope:     cb.Some(cb.Scope(sm.Scope())),
+				Metrics:   cb.OptSlice(outM),
+				SchemaURL: cb.NonEmpty(sm.SchemaUrl()),
 			})
 		}
 		outRM = append(outRM, d.ResourceMetrics{
-			Resource:     some(resource(rm.Resource())),
-			ScopeMetrics: optSlice(outSM),
-			SchemaURL:    nonEmpty(rm.SchemaUrl()),
+			Resource:     cb.Some(cb.Resource(rm.Resource())),
+			ScopeMetrics: cb.OptSlice(outSM),
+			SchemaURL:    cb.NonEmpty(rm.SchemaUrl()),
 		})
 	}
-	return d.MetricsData{ResourceMetrics: optSlice(outRM)}
+	return d.MetricsData{ResourceMetrics: cb.OptSlice(outRM)}
 }
 
 // Builder is the reusable form: one scratch buffer, reset per Build.
@@ -64,40 +65,40 @@ func (w *Builder) BuildAppend(dst []byte, md pmetric.Metrics) []byte {
 
 func toMetric(m pmetric.Metric) d.Metric {
 	out := d.Metric{
-		Name:            nonEmpty(m.Name()),
-		DescriptionText: nonEmpty(m.Description()),
-		Unit:            nonEmpty(m.Unit()),
-		Metadata:        optSlice(keyValues(m.Metadata())),
+		Name:            cb.NonEmpty(m.Name()),
+		DescriptionText: cb.NonEmpty(m.Description()),
+		Unit:            cb.NonEmpty(m.Unit()),
+		Metadata:        cb.OptSlice(cb.KeyValues(m.Metadata())),
 	}
 	// The `data` oneof. MetricTypeEmpty — a metric with no data set — leaves the union
 	// absent, the same thing protobuf writes for an unset oneof.
 	switch m.Type() {
 	case pmetric.MetricTypeGauge:
-		out.Data = some(d.MetricDataGauge(d.Gauge{
-			DataPoints: optSlice(numberPoints(m.Gauge().DataPoints())),
+		out.Data = cb.Some(d.MetricDataGauge(d.Gauge{
+			DataPoints: cb.OptSlice(numberPoints(m.Gauge().DataPoints())),
 		}))
 	case pmetric.MetricTypeSum:
 		s := m.Sum()
-		out.Data = some(d.MetricDataSum(d.Sum{
-			DataPoints:             optSlice(numberPoints(s.DataPoints())),
-			AggregationTemporality: nz(d.AggregationTemporality(s.AggregationTemporality())),
-			IsMonotonic:            nz(s.IsMonotonic()),
+		out.Data = cb.Some(d.MetricDataSum(d.Sum{
+			DataPoints:             cb.OptSlice(numberPoints(s.DataPoints())),
+			AggregationTemporality: cb.NZ(d.AggregationTemporality(s.AggregationTemporality())),
+			IsMonotonic:            cb.NZ(s.IsMonotonic()),
 		}))
 	case pmetric.MetricTypeHistogram:
 		h := m.Histogram()
-		out.Data = some(d.MetricDataHistogram(d.Histogram{
-			DataPoints:             optSlice(histogramPoints(h.DataPoints())),
-			AggregationTemporality: nz(d.AggregationTemporality(h.AggregationTemporality())),
+		out.Data = cb.Some(d.MetricDataHistogram(d.Histogram{
+			DataPoints:             cb.OptSlice(histogramPoints(h.DataPoints())),
+			AggregationTemporality: cb.NZ(d.AggregationTemporality(h.AggregationTemporality())),
 		}))
 	case pmetric.MetricTypeExponentialHistogram:
 		h := m.ExponentialHistogram()
-		out.Data = some(d.MetricDataExponentialHistogram(d.ExponentialHistogram{
-			DataPoints:             optSlice(expHistogramPoints(h.DataPoints())),
-			AggregationTemporality: nz(d.AggregationTemporality(h.AggregationTemporality())),
+		out.Data = cb.Some(d.MetricDataExponentialHistogram(d.ExponentialHistogram{
+			DataPoints:             cb.OptSlice(expHistogramPoints(h.DataPoints())),
+			AggregationTemporality: cb.NZ(d.AggregationTemporality(h.AggregationTemporality())),
 		}))
 	case pmetric.MetricTypeSummary:
 		// Summary has no node of its own in the schema: the variant IS the array.
-		out.Data = some(d.MetricDataSummary(summaryPoints(m.Summary().DataPoints())))
+		out.Data = cb.Some(d.MetricDataSummary(summaryPoints(m.Summary().DataPoints())))
 	}
 	return out
 }
@@ -112,17 +113,17 @@ func numberPoints(ps pmetric.NumberDataPointSlice) []d.NumberDataPoint {
 	for i := 0; i < ps.Len(); i++ {
 		p := ps.At(i)
 		dp := d.NumberDataPoint{
-			Attributes:        optSlice(keyValues(p.Attributes())),
-			StartTimeUnixNano: nonZero(uint64(p.StartTimestamp())),
-			TimeUnixNano:      nonZero(uint64(p.Timestamp())),
-			Exemplars:         optSlice(exemplars(p.Exemplars())),
-			Flags:             nonZeroU32(uint32(p.Flags())),
+			Attributes:        cb.OptSlice(cb.KeyValues(p.Attributes())),
+			StartTimeUnixNano: cb.NonZero(uint64(p.StartTimestamp())),
+			TimeUnixNano:      cb.NonZero(uint64(p.Timestamp())),
+			Exemplars:         cb.OptSlice(exemplars(p.Exemplars())),
+			Flags:             cb.NonZeroU32(uint32(p.Flags())),
 		}
 		switch p.ValueType() {
 		case pmetric.NumberDataPointValueTypeDouble:
-			dp.Value = some(d.NumberValueAsDouble(p.DoubleValue()))
+			dp.Value = cb.Some(d.NumberValueAsDouble(p.DoubleValue()))
 		case pmetric.NumberDataPointValueTypeInt:
-			dp.Value = some(d.NumberValueAsInt(p.IntValue()))
+			dp.Value = cb.Some(d.NumberValueAsInt(p.IntValue()))
 		}
 		out = append(out, dp)
 	}
@@ -139,23 +140,23 @@ func histogramPoints(ps pmetric.HistogramDataPointSlice) []d.HistogramDataPoint 
 	for i := 0; i < ps.Len(); i++ {
 		p := ps.At(i)
 		dp := d.HistogramDataPoint{
-			Attributes:        optSlice(keyValues(p.Attributes())),
-			StartTimeUnixNano: nonZero(uint64(p.StartTimestamp())),
-			TimeUnixNano:      nonZero(uint64(p.Timestamp())),
-			Count:             nonZero(p.Count()),
-			BucketCounts:      optSlice(p.BucketCounts().AsRaw()),
-			ExplicitBounds:    optSlice(p.ExplicitBounds().AsRaw()),
-			Exemplars:         optSlice(exemplars(p.Exemplars())),
-			Flags:             nonZeroU32(uint32(p.Flags())),
+			Attributes:        cb.OptSlice(cb.KeyValues(p.Attributes())),
+			StartTimeUnixNano: cb.NonZero(uint64(p.StartTimestamp())),
+			TimeUnixNano:      cb.NonZero(uint64(p.Timestamp())),
+			Count:             cb.NonZero(p.Count()),
+			BucketCounts:      cb.OptSlice(p.BucketCounts().AsRaw()),
+			ExplicitBounds:    cb.OptSlice(p.ExplicitBounds().AsRaw()),
+			Exemplars:         cb.OptSlice(exemplars(p.Exemplars())),
+			Flags:             cb.NonZeroU32(uint32(p.Flags())),
 		}
 		if p.HasSum() {
-			dp.Sum = some(p.Sum())
+			dp.Sum = cb.Some(p.Sum())
 		}
 		if p.HasMin() {
-			dp.Min = some(p.Min())
+			dp.Min = cb.Some(p.Min())
 		}
 		if p.HasMax() {
-			dp.Max = some(p.Max())
+			dp.Max = cb.Some(p.Max())
 		}
 		out = append(out, dp)
 	}
@@ -170,26 +171,26 @@ func expHistogramPoints(ps pmetric.ExponentialHistogramDataPointSlice) []d.Expon
 	for i := 0; i < ps.Len(); i++ {
 		p := ps.At(i)
 		dp := d.ExponentialHistogramDataPoint{
-			Attributes:        optSlice(keyValues(p.Attributes())),
-			StartTimeUnixNano: nonZero(uint64(p.StartTimestamp())),
-			TimeUnixNano:      nonZero(uint64(p.Timestamp())),
-			Count:             nonZero(p.Count()),
-			Scale:             nz(p.Scale()),
-			ZeroCount:         nonZero(p.ZeroCount()),
+			Attributes:        cb.OptSlice(cb.KeyValues(p.Attributes())),
+			StartTimeUnixNano: cb.NonZero(uint64(p.StartTimestamp())),
+			TimeUnixNano:      cb.NonZero(uint64(p.Timestamp())),
+			Count:             cb.NonZero(p.Count()),
+			Scale:             cb.NZ(p.Scale()),
+			ZeroCount:         cb.NonZero(p.ZeroCount()),
 			Positive:          buckets(p.Positive()),
 			Negative:          buckets(p.Negative()),
-			Flags:             nonZeroU32(uint32(p.Flags())),
-			Exemplars:         optSlice(exemplars(p.Exemplars())),
-			ZeroThreshold:     nz(p.ZeroThreshold()),
+			Flags:             cb.NonZeroU32(uint32(p.Flags())),
+			Exemplars:         cb.OptSlice(exemplars(p.Exemplars())),
+			ZeroThreshold:     cb.NZ(p.ZeroThreshold()),
 		}
 		if p.HasSum() {
-			dp.Sum = some(p.Sum())
+			dp.Sum = cb.Some(p.Sum())
 		}
 		if p.HasMin() {
-			dp.Min = some(p.Min())
+			dp.Min = cb.Some(p.Min())
 		}
 		if p.HasMax() {
-			dp.Max = some(p.Max())
+			dp.Max = cb.Some(p.Max())
 		}
 		out = append(out, dp)
 	}
@@ -203,9 +204,9 @@ func buckets(b pmetric.ExponentialHistogramDataPointBuckets) dagr.Opt[d.Buckets]
 	if b.Offset() == 0 && b.BucketCounts().Len() == 0 {
 		return dagr.Opt[d.Buckets]{}
 	}
-	return some(d.Buckets{
-		Offset:       nz(b.Offset()),
-		BucketCounts: optSlice(b.BucketCounts().AsRaw()),
+	return cb.Some(d.Buckets{
+		Offset:       cb.NZ(b.Offset()),
+		BucketCounts: cb.OptSlice(b.BucketCounts().AsRaw()),
 	})
 }
 
@@ -222,17 +223,17 @@ func summaryPoints(ps pmetric.SummaryDataPointSlice) []d.SummaryDataPoint {
 			qv = make([]d.ValueAtQuantile, 0, qs.Len())
 			for j := 0; j < qs.Len(); j++ {
 				q := qs.At(j)
-				qv = append(qv, d.ValueAtQuantile{Quantile: nz(q.Quantile()), Value: nz(q.Value())})
+				qv = append(qv, d.ValueAtQuantile{Quantile: cb.NZ(q.Quantile()), Value: cb.NZ(q.Value())})
 			}
 		}
 		out = append(out, d.SummaryDataPoint{
-			Attributes:        optSlice(keyValues(p.Attributes())),
-			StartTimeUnixNano: nonZero(uint64(p.StartTimestamp())),
-			TimeUnixNano:      nonZero(uint64(p.Timestamp())),
-			Count:             nonZero(p.Count()),
-			Sum:               nz(p.Sum()), // plain `double` here, not `optional`
-			QuantileValues:    optSlice(qv),
-			Flags:             nonZeroU32(uint32(p.Flags())),
+			Attributes:        cb.OptSlice(cb.KeyValues(p.Attributes())),
+			StartTimeUnixNano: cb.NonZero(uint64(p.StartTimestamp())),
+			TimeUnixNano:      cb.NonZero(uint64(p.Timestamp())),
+			Count:             cb.NonZero(p.Count()),
+			Sum:               cb.NZ(p.Sum()), // plain `double` here, not `optional`
+			QuantileValues:    cb.OptSlice(qv),
+			Flags:             cb.NonZeroU32(uint32(p.Flags())),
 		})
 	}
 	return out
@@ -246,16 +247,16 @@ func exemplars(es pmetric.ExemplarSlice) []d.Exemplar {
 	for i := 0; i < es.Len(); i++ {
 		e := es.At(i)
 		ex := d.Exemplar{
-			FilteredAttributes: optSlice(keyValues(e.FilteredAttributes())),
-			TimeUnixNano:       nonZero(uint64(e.Timestamp())),
-			SpanID:             spanID(e.SpanID()),
-			TraceID:            traceID(e.TraceID()),
+			FilteredAttributes: cb.OptSlice(cb.KeyValues(e.FilteredAttributes())),
+			TimeUnixNano:       cb.NonZero(uint64(e.Timestamp())),
+			SpanID:             cb.SpanID(e.SpanID()),
+			TraceID:            cb.TraceID(e.TraceID()),
 		}
 		switch e.ValueType() {
 		case pmetric.ExemplarValueTypeDouble:
-			ex.Value = some(d.NumberValueAsDouble(e.DoubleValue()))
+			ex.Value = cb.Some(d.NumberValueAsDouble(e.DoubleValue()))
 		case pmetric.ExemplarValueTypeInt:
-			ex.Value = some(d.NumberValueAsInt(e.IntValue()))
+			ex.Value = cb.Some(d.NumberValueAsInt(e.IntValue()))
 		}
 		out = append(out, ex)
 	}

@@ -6,6 +6,8 @@ import (
 
 	g "otlpgen/otlpprofiles"
 	"otlpgen/profilelog"
+
+	cb "otlpdagr/commonbridge"
 )
 
 // ToProfiles materialises an OtlpProfiles buffer into pdata, for handing off to an
@@ -28,7 +30,7 @@ func FromRecord(record []byte) pprofile.Profiles {
 	return putProfiles(a.ResourceProfilesIter(), dc, ok)
 }
 
-func putProfiles[I any, P cursor[I, g.ResourceProfilesAccessor]](it I, dict g.ProfilesDictionaryAccessor, hasDict bool) pprofile.Profiles {
+func putProfiles[I any, P cb.Cursor[I, g.ResourceProfilesAccessor]](it I, dict g.ProfilesDictionaryAccessor, hasDict bool) pprofile.Profiles {
 	c := P(&it)
 	pd := pprofile.NewProfiles()
 	if hasDict {
@@ -37,7 +39,7 @@ func putProfiles[I any, P cursor[I, g.ResourceProfilesAccessor]](it I, dict g.Pr
 	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		rp := pd.ResourceProfiles().AppendEmpty()
 		if r, ok := src.Resource(); ok {
-			putResource(rp.Resource(), r)
+			cb.DecodeResource(rp.Resource(), r)
 		}
 		if v, ok := src.SchemaURL(); ok {
 			rp.SetSchemaUrl(v)
@@ -46,7 +48,7 @@ func putProfiles[I any, P cursor[I, g.ResourceProfilesAccessor]](it I, dict g.Pr
 		for spSrc, ok := it.Next(); ok; spSrc, ok = it.Next() {
 			sp := rp.ScopeProfiles().AppendEmpty()
 			if sc, ok := spSrc.Scope(); ok {
-				putScope(sp.Scope(), sc)
+				cb.DecodeScope(sp.Scope(), sc)
 			}
 			if v, ok := spSrc.SchemaURL(); ok {
 				sp.SetSchemaUrl(v)
@@ -61,7 +63,7 @@ func putProfiles[I any, P cursor[I, g.ResourceProfilesAccessor]](it I, dict g.Pr
 }
 
 // int32s / int64s / uint64s copy a scalar array through its cursor.
-func int32s[I any, P cursor[I, int32]](dst pcommon.Int32Slice, it I) {
+func int32s[I any, P cb.Cursor[I, int32]](dst pcommon.Int32Slice, it I) {
 	c := P(&it)
 	dst.EnsureCapacity(c.Len())
 	for v, ok := c.Next(); ok; v, ok = c.Next() {
@@ -69,7 +71,7 @@ func int32s[I any, P cursor[I, int32]](dst pcommon.Int32Slice, it I) {
 	}
 }
 
-func int64s[I any, P cursor[I, int64]](dst pcommon.Int64Slice, it I) {
+func int64s[I any, P cb.Cursor[I, int64]](dst pcommon.Int64Slice, it I) {
 	c := P(&it)
 	dst.EnsureCapacity(c.Len())
 	for v, ok := c.Next(); ok; v, ok = c.Next() {
@@ -77,7 +79,7 @@ func int64s[I any, P cursor[I, int64]](dst pcommon.Int64Slice, it I) {
 	}
 }
 
-func uint64s[I any, P cursor[I, uint64]](dst pcommon.UInt64Slice, it I) {
+func uint64s[I any, P cb.Cursor[I, uint64]](dst pcommon.UInt64Slice, it I) {
 	c := P(&it)
 	dst.EnsureCapacity(c.Len())
 	for v, ok := c.Next(); ok; v, ok = c.Next() {
@@ -154,10 +156,10 @@ func putDictionary(dst pprofile.ProfilesDictionary, src g.ProfilesDictionaryAcce
 		for k, ok := it.Next(); ok; k, ok = it.Next() {
 			out := dst.LinkTable().AppendEmpty()
 			if v, ok := k.TraceID(); ok {
-				out.SetTraceID(toTraceID(v))
+				out.SetTraceID(cb.ToTraceID(v))
 			}
 			if v, ok := k.SpanID(); ok {
-				out.SetSpanID(toSpanID(v))
+				out.SetSpanID(cb.ToSpanID(v))
 			}
 		}
 	}
@@ -177,7 +179,7 @@ func putDictionary(dst pprofile.ProfilesDictionary, src g.ProfilesDictionaryAcce
 				out.SetKeyStrindex(v)
 			}
 			if v, ok := a.Value(); ok {
-				putValue(out.Value(), v, 0)
+				cb.DecodeValue(out.Value(), v, 0)
 			}
 			if v, ok := a.UnitStrindex(); ok {
 				out.SetUnitStrindex(v)

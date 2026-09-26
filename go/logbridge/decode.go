@@ -6,6 +6,8 @@ import (
 
 	"otlpgen/logrecordlog"
 	g "otlpgen/otlplogs"
+
+	cb "otlpdagr/commonbridge"
 )
 
 // ToLogs materialises an OtlpLogs buffer into pdata, for handing off to an unmodified
@@ -25,13 +27,13 @@ func FromRecord(record []byte) plog.Logs {
 	return putLogs(logrecordlog.NewBatchAccessor(record, 0).ResourceLogsIter())
 }
 
-func putLogs[I any, P cursor[I, g.ResourceLogsAccessor]](it I) plog.Logs {
+func putLogs[I any, P cb.Cursor[I, g.ResourceLogsAccessor]](it I) plog.Logs {
 	c := P(&it)
 	ld := plog.NewLogs()
 	for src, ok := c.Next(); ok; src, ok = c.Next() {
 		rl := ld.ResourceLogs().AppendEmpty()
 		if r, ok := src.Resource(); ok {
-			putResource(rl.Resource(), r)
+			cb.DecodeResource(rl.Resource(), r)
 		}
 		if v, ok := src.SchemaURL(); ok {
 			rl.SetSchemaUrl(v)
@@ -40,7 +42,7 @@ func putLogs[I any, P cursor[I, g.ResourceLogsAccessor]](it I) plog.Logs {
 		for slSrc, ok := it.Next(); ok; slSrc, ok = it.Next() {
 			sl := rl.ScopeLogs().AppendEmpty()
 			if sc, ok := slSrc.Scope(); ok {
-				putScope(sl.Scope(), sc)
+				cb.DecodeScope(sl.Scope(), sc)
 			}
 			if v, ok := slSrc.SchemaURL(); ok {
 				sl.SetSchemaUrl(v)
@@ -71,9 +73,9 @@ func putLogRecord(r plog.LogRecord, src g.LogRecordAccessor) {
 		r.SetSeverityText(v)
 	}
 	if v, ok := src.Body(); ok {
-		putValue(r.Body(), v, 0)
+		cb.DecodeValue(r.Body(), v, 0)
 	}
-	putAttrs(r.Attributes(), src.AttributesIter())
+	cb.DecodeAttrs(r.Attributes(), src.AttributesIter())
 	if v, ok := src.DroppedAttributesCount(); ok {
 		r.SetDroppedAttributesCount(v)
 	}
@@ -81,10 +83,10 @@ func putLogRecord(r plog.LogRecord, src g.LogRecordAccessor) {
 		r.SetFlags(plog.LogRecordFlags(v))
 	}
 	if v, ok := src.TraceID(); ok {
-		r.SetTraceID(toTraceID(v))
+		r.SetTraceID(cb.ToTraceID(v))
 	}
 	if v, ok := src.SpanID(); ok {
-		r.SetSpanID(toSpanID(v))
+		r.SetSpanID(cb.ToSpanID(v))
 	}
 	if v, ok := src.EventName(); ok {
 		r.SetEventName(v)

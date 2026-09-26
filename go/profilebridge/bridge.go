@@ -4,13 +4,14 @@
 //
 // The Dagr graph keeps the proto's shape exactly — every cross-reference an integer index
 // into a ProfilesDictionary table — so this bridge is a field-for-field copy with no index
-// translation (schema.py, "Profiles"). The shared messages come from common_gen.go, which
-// regen.sh copies from pdatabridge/common.go.
+// translation (schema.py, "Profiles"). The shared messages convert through package
+// commonbridge.
 package profilebridge
 
 import (
 	"go.opentelemetry.io/collector/pdata/pprofile"
 
+	cb "otlpdagr/commonbridge"
 	"otlpgen/dagr"
 	d "otlpgen/otlpprofilesdirect"
 )
@@ -34,19 +35,19 @@ func ToValue(pd pprofile.Profiles) d.ProfilesData {
 				outP = append(outP, toProfile(ps.At(k)))
 			}
 			outSP = append(outSP, d.ScopeProfiles{
-				Scope:     some(scope(sp.Scope())),
-				Profiles:  optSlice(outP),
-				SchemaURL: nonEmpty(sp.SchemaUrl()),
+				Scope:     cb.Some(cb.Scope(sp.Scope())),
+				Profiles:  cb.OptSlice(outP),
+				SchemaURL: cb.NonEmpty(sp.SchemaUrl()),
 			})
 		}
 		outRP = append(outRP, d.ResourceProfiles{
-			Resource:      some(resource(rp.Resource())),
-			ScopeProfiles: optSlice(outSP),
-			SchemaURL:     nonEmpty(rp.SchemaUrl()),
+			Resource:      cb.Some(cb.Resource(rp.Resource())),
+			ScopeProfiles: cb.OptSlice(outSP),
+			SchemaURL:     cb.NonEmpty(rp.SchemaUrl()),
 		})
 	}
 	return d.ProfilesData{
-		ResourceProfiles: optSlice(outRP),
+		ResourceProfiles: cb.OptSlice(outRP),
 		Dictionary:       dictionary(pd.Dictionary()),
 	}
 }
@@ -67,21 +68,21 @@ func (w *Builder) BuildAppend(dst []byte, pd pprofile.Profiles) []byte {
 // an ordinary element here: an all-absent packed node, or "" in the string table — the
 // index space must not shift by one, so nothing is special-cased or dropped.
 func dictionary(dc pprofile.ProfilesDictionary) dagr.Opt[d.ProfilesDictionary] {
-	out := d.ProfilesDictionary{StringTable: optSlice(dc.StringTable().AsRaw())}
+	out := d.ProfilesDictionary{StringTable: cb.OptSlice(dc.StringTable().AsRaw())}
 
 	if mt := dc.MappingTable(); mt.Len() > 0 {
 		lst := make([]d.Mapping, 0, mt.Len())
 		for i := 0; i < mt.Len(); i++ {
 			m := mt.At(i)
 			lst = append(lst, d.Mapping{
-				MemoryStart:      nonZero(m.MemoryStart()),
-				MemoryLimit:      nonZero(m.MemoryLimit()),
-				FileOffset:       nonZero(m.FileOffset()),
-				FilenameStrindex: nz(m.FilenameStrindex()),
-				AttributeIndices: optSlice(m.AttributeIndices().AsRaw()),
+				MemoryStart:      cb.NonZero(m.MemoryStart()),
+				MemoryLimit:      cb.NonZero(m.MemoryLimit()),
+				FileOffset:       cb.NonZero(m.FileOffset()),
+				FilenameStrindex: cb.NZ(m.FilenameStrindex()),
+				AttributeIndices: cb.OptSlice(m.AttributeIndices().AsRaw()),
 			})
 		}
-		out.MappingTable = some(lst)
+		out.MappingTable = cb.Some(lst)
 	}
 	if lt := dc.LocationTable(); lt.Len() > 0 {
 		lst := make([]d.Location, 0, lt.Len())
@@ -93,102 +94,102 @@ func dictionary(dc pprofile.ProfilesDictionary) dagr.Opt[d.ProfilesDictionary] {
 				for j := 0; j < ls.Len(); j++ {
 					ln := ls.At(j)
 					lines = append(lines, d.Line{
-						FunctionIndex: nz(ln.FunctionIndex()),
-						Line:          nz(ln.Line()),
-						Column:        nz(ln.Column()),
+						FunctionIndex: cb.NZ(ln.FunctionIndex()),
+						Line:          cb.NZ(ln.Line()),
+						Column:        cb.NZ(ln.Column()),
 					})
 				}
 			}
 			lst = append(lst, d.Location{
-				MappingIndex:     nz(l.MappingIndex()),
-				Address:          nonZero(l.Address()),
-				Lines:            optSlice(lines),
-				AttributeIndices: optSlice(l.AttributeIndices().AsRaw()),
+				MappingIndex:     cb.NZ(l.MappingIndex()),
+				Address:          cb.NonZero(l.Address()),
+				Lines:            cb.OptSlice(lines),
+				AttributeIndices: cb.OptSlice(l.AttributeIndices().AsRaw()),
 			})
 		}
-		out.LocationTable = some(lst)
+		out.LocationTable = cb.Some(lst)
 	}
 	if ft := dc.FunctionTable(); ft.Len() > 0 {
 		lst := make([]d.Function, 0, ft.Len())
 		for i := 0; i < ft.Len(); i++ {
 			f := ft.At(i)
 			lst = append(lst, d.Function{
-				NameStrindex:       nz(f.NameStrindex()),
-				SystemNameStrindex: nz(f.SystemNameStrindex()),
-				FilenameStrindex:   nz(f.FilenameStrindex()),
-				StartLine:          nz(f.StartLine()),
+				NameStrindex:       cb.NZ(f.NameStrindex()),
+				SystemNameStrindex: cb.NZ(f.SystemNameStrindex()),
+				FilenameStrindex:   cb.NZ(f.FilenameStrindex()),
+				StartLine:          cb.NZ(f.StartLine()),
 			})
 		}
-		out.FunctionTable = some(lst)
+		out.FunctionTable = cb.Some(lst)
 	}
 	if kt := dc.LinkTable(); kt.Len() > 0 {
 		lst := make([]d.Link, 0, kt.Len())
 		for i := 0; i < kt.Len(); i++ {
 			k := kt.At(i)
-			lst = append(lst, d.Link{TraceID: traceID(k.TraceID()), SpanID: spanID(k.SpanID())})
+			lst = append(lst, d.Link{TraceID: cb.TraceID(k.TraceID()), SpanID: cb.SpanID(k.SpanID())})
 		}
-		out.LinkTable = some(lst)
+		out.LinkTable = cb.Some(lst)
 	}
 	if at := dc.AttributeTable(); at.Len() > 0 {
 		lst := make([]d.KeyValueAndUnit, 0, at.Len())
 		for i := 0; i < at.Len(); i++ {
 			a := at.At(i)
 			kv := d.KeyValueAndUnit{
-				KeyStrindex:  nz(a.KeyStrindex()),
-				UnitStrindex: nz(a.UnitStrindex()),
+				KeyStrindex:  cb.NZ(a.KeyStrindex()),
+				UnitStrindex: cb.NZ(a.UnitStrindex()),
 			}
-			if v, ok := attrValue(a.Value()); ok {
-				kv.Value = some(v)
+			if v, ok := cb.AttrValue(a.Value()); ok {
+				kv.Value = cb.Some(v)
 			}
 			lst = append(lst, kv)
 		}
-		out.AttributeTable = some(lst)
+		out.AttributeTable = cb.Some(lst)
 	}
 	if st := dc.StackTable(); st.Len() > 0 {
 		lst := make([]d.Stack, 0, st.Len())
 		for i := 0; i < st.Len(); i++ {
-			lst = append(lst, d.Stack{LocationIndices: optSlice(st.At(i).LocationIndices().AsRaw())})
+			lst = append(lst, d.Stack{LocationIndices: cb.OptSlice(st.At(i).LocationIndices().AsRaw())})
 		}
-		out.StackTable = some(lst)
+		out.StackTable = cb.Some(lst)
 	}
-	return some(out)
+	return cb.Some(out)
 }
 
 func valueType(v pprofile.ValueType) dagr.Opt[d.ValueType] {
 	if v.TypeStrindex() == 0 && v.UnitStrindex() == 0 {
 		return dagr.Opt[d.ValueType]{}
 	}
-	return some(d.ValueType{TypeStrindex: nz(v.TypeStrindex()), UnitStrindex: nz(v.UnitStrindex())})
+	return cb.Some(d.ValueType{TypeStrindex: cb.NZ(v.TypeStrindex()), UnitStrindex: cb.NZ(v.UnitStrindex())})
 }
 
 func toProfile(p pprofile.Profile) d.Profile {
 	out := d.Profile{
 		SampleType:             valueType(p.SampleType()),
-		TimeUnixNano:           nonZero(uint64(p.Time())),
-		DurationNano:           nonZero(p.DurationNano()),
+		TimeUnixNano:           cb.NonZero(uint64(p.Time())),
+		DurationNano:           cb.NonZero(p.DurationNano()),
 		PeriodType:             valueType(p.PeriodType()),
-		Period:                 nz(p.Period()),
-		DroppedAttributesCount: nonZeroU32(p.DroppedAttributesCount()),
-		OriginalPayloadFormat:  nonEmpty(p.OriginalPayloadFormat()),
-		OriginalPayload:        optSlice(p.OriginalPayload().AsRaw()),
-		AttributeIndices:       optSlice(p.AttributeIndices().AsRaw()),
+		Period:                 cb.NZ(p.Period()),
+		DroppedAttributesCount: cb.NonZeroU32(p.DroppedAttributesCount()),
+		OriginalPayloadFormat:  cb.NonEmpty(p.OriginalPayloadFormat()),
+		OriginalPayload:        cb.OptSlice(p.OriginalPayload().AsRaw()),
+		AttributeIndices:       cb.OptSlice(p.AttributeIndices().AsRaw()),
 	}
 	if id := p.ProfileID(); !id.IsEmpty() {
-		out.ProfileID = some(append([]byte(nil), id[:]...))
+		out.ProfileID = cb.Some(append([]byte(nil), id[:]...))
 	}
 	if ss := p.Samples(); ss.Len() > 0 {
 		lst := make([]d.Sample, 0, ss.Len())
 		for i := 0; i < ss.Len(); i++ {
 			s := ss.At(i)
 			lst = append(lst, d.Sample{
-				StackIndex:         nz(s.StackIndex()),
-				AttributeIndices:   optSlice(s.AttributeIndices().AsRaw()),
-				LinkIndex:          nz(s.LinkIndex()),
-				Values:             optSlice(s.Values().AsRaw()),
-				TimestampsUnixNano: optSlice(s.TimestampsUnixNano().AsRaw()),
+				StackIndex:         cb.NZ(s.StackIndex()),
+				AttributeIndices:   cb.OptSlice(s.AttributeIndices().AsRaw()),
+				LinkIndex:          cb.NZ(s.LinkIndex()),
+				Values:             cb.OptSlice(s.Values().AsRaw()),
+				TimestampsUnixNano: cb.OptSlice(s.TimestampsUnixNano().AsRaw()),
 			})
 		}
-		out.Samples = some(lst)
+		out.Samples = cb.Some(lst)
 	}
 	return out
 }

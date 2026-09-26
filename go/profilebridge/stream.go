@@ -4,7 +4,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pprofile"
 
+	cb "otlpdagr/commonbridge"
 	"otlpgen/dagr"
+	cd "otlpgen/otlpcommondirect"
 	d "otlpgen/otlpprofilesdirect"
 )
 
@@ -17,22 +19,22 @@ import (
 // allocates. TestStreamMatches gates the bytes against the value-tree path.
 type StreamBuilder struct {
 	b  *dagr.Builder
-	lv levels
+	lv cb.Levels
 
-	kv    pool[d.KeyValue]
-	i32   pool[int32]
-	i64   pool[int64]
-	u64   pool[uint64]
-	bytes pool[byte]
-	strs  pool[string]
-	smp   pool[d.Sample]
-	maps  pool[d.Mapping]
-	locs  pool[d.Location]
-	lines pool[d.Line]
-	funcs pool[d.Function]
-	links pool[d.Link]
-	attrs pool[d.KeyValueAndUnit]
-	stks  pool[d.Stack]
+	kv    cb.Pool[cd.KeyValue]
+	i32   cb.Pool[int32]
+	i64   cb.Pool[int64]
+	u64   cb.Pool[uint64]
+	bytes cb.Pool[byte]
+	strs  cb.Pool[string]
+	smp   cb.Pool[d.Sample]
+	maps  cb.Pool[d.Mapping]
+	locs  cb.Pool[d.Location]
+	lines cb.Pool[d.Line]
+	funcs cb.Pool[d.Function]
+	links cb.Pool[d.Link]
+	attrs cb.Pool[d.KeyValueAndUnit]
+	stks  cb.Pool[d.Stack]
 }
 
 func NewStreamBuilder() *StreamBuilder { return &StreamBuilder{b: dagr.NewBuilder(0)} }
@@ -51,7 +53,7 @@ func (w *StreamBuilder) BuildAppend(dst []byte, pd pprofile.Profiles) []byte {
 	}
 	buf, i = dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
 	b.Put(buf, i)
-	return finishGraph(b, dst)
+	return cb.FinishGraph(b, dst)
 }
 
 // AppendRecord encodes pd as the content of one ProfileLog `Batch` record — what
@@ -65,7 +67,7 @@ func (w *StreamBuilder) AppendRecord(dst []byte, receivedUnixNano uint64, pd ppr
 	buf, i = dagr.PutLEBAt(buf, i, 7) // Batch.dictionary, field 3
 	buf, i = w.putResourceProfiles(pd, b, buf, i)
 	buf, i = dagr.PutLEBAt(buf, i, 5) // Batch.resource_profiles, field 2 (required)
-	buf, i = putRecordEnvelope(buf, i, before, receivedUnixNano, uint32(pd.SampleCount()))
+	buf, i = cb.PutRecordEnvelope(buf, i, before, receivedUnixNano, uint32(pd.SampleCount()))
 	b.Put(buf, i)
 	return b.AppendTo(dst)
 }
@@ -73,71 +75,71 @@ func (w *StreamBuilder) AppendRecord(dst []byte, receivedUnixNano uint64, pd ppr
 // putResourceProfiles writes the resource_profiles array content (no field tag).
 func (w *StreamBuilder) putResourceProfiles(pd pprofile.Profiles, b *dagr.Builder, buf []byte, i int) ([]byte, int) {
 	rps := pd.ResourceProfiles()
-	return putArray(buf, i, rps.Len(), func(k int, buf []byte, i int) ([]byte, int) {
+	return cb.PutArray(buf, i, rps.Len(), func(k int, buf []byte, i int) ([]byte, int) {
 		rp := rps.At(k)
 		sps := rp.ScopeProfiles()
-		return putLevel(buf, i, rp.SchemaUrl(), sps.Len(),
+		return cb.PutLevel(buf, i, rp.SchemaUrl(), sps.Len(),
 			func(k int, buf []byte, i int) ([]byte, int) {
 				sp := sps.At(k)
 				ps := sp.Profiles()
-				return putLevel(buf, i, sp.SchemaUrl(), ps.Len(),
+				return cb.PutLevel(buf, i, sp.SchemaUrl(), ps.Len(),
 					func(k int, buf []byte, i int) ([]byte, int) {
 						return d.PutProfile(w.profileValue(ps.At(k)), b, buf, i)
 					},
-					func(buf []byte, i int) ([]byte, int) { return w.lv.putScope(sp.Scope(), b, buf, i) })
+					func(buf []byte, i int) ([]byte, int) { return w.lv.PutScope(sp.Scope(), b, buf, i) })
 			},
-			func(buf []byte, i int) ([]byte, int) { return w.lv.putResource(rp.Resource(), b, buf, i) })
+			func(buf []byte, i int) ([]byte, int) { return w.lv.PutResource(rp.Resource(), b, buf, i) })
 	})
 }
 
 func (w *StreamBuilder) reset() {
-	w.kv.reset()
-	w.i32.reset()
-	w.i64.reset()
-	w.u64.reset()
-	w.bytes.reset()
-	w.strs.reset()
-	w.smp.reset()
-	w.maps.reset()
-	w.locs.reset()
-	w.lines.reset()
-	w.funcs.reset()
-	w.links.reset()
-	w.attrs.reset()
-	w.stks.reset()
+	w.kv.Reset()
+	w.i32.Reset()
+	w.i64.Reset()
+	w.u64.Reset()
+	w.bytes.Reset()
+	w.strs.Reset()
+	w.smp.Reset()
+	w.maps.Reset()
+	w.locs.Reset()
+	w.lines.Reset()
+	w.funcs.Reset()
+	w.links.Reset()
+	w.attrs.Reset()
+	w.stks.Reset()
 }
 
 func (w *StreamBuilder) i32s(s pcommon.Int32Slice) dagr.Opt[[]int32] {
 	if s.Len() == 0 {
 		return dagr.Opt[[]int32]{}
 	}
-	dst := w.i32.take(s.Len())
+	dst := w.i32.Take(s.Len())
 	for k := range dst {
 		dst[k] = s.At(k)
 	}
-	return some(dst)
+	return cb.Some(dst)
 }
 
 func (w *StreamBuilder) i64s(s pcommon.Int64Slice) dagr.Opt[[]int64] {
 	if s.Len() == 0 {
 		return dagr.Opt[[]int64]{}
 	}
-	dst := w.i64.take(s.Len())
+	dst := w.i64.Take(s.Len())
 	for k := range dst {
 		dst[k] = s.At(k)
 	}
-	return some(dst)
+	return cb.Some(dst)
 }
 
 func (w *StreamBuilder) u64s(s pcommon.UInt64Slice) dagr.Opt[[]uint64] {
 	if s.Len() == 0 {
 		return dagr.Opt[[]uint64]{}
 	}
-	dst := w.u64.take(s.Len())
+	dst := w.u64.Take(s.Len())
 	for k := range dst {
 		dst[k] = s.At(k)
 	}
-	return some(dst)
+	return cb.Some(dst)
 }
 
 // putDictionary writes the ProfilesDictionary node — dictionary() over reused scratch.
@@ -146,88 +148,88 @@ func (w *StreamBuilder) putDictionary(dc pprofile.ProfilesDictionary, b *dagr.Bu
 	w.reset()
 	out := d.ProfilesDictionary{}
 	if st := dc.StringTable(); st.Len() > 0 {
-		l := w.strs.take(st.Len())
+		l := w.strs.Take(st.Len())
 		for k := range l {
 			l[k] = st.At(k)
 		}
-		out.StringTable = some(l)
+		out.StringTable = cb.Some(l)
 	}
 	if mt := dc.MappingTable(); mt.Len() > 0 {
-		l := w.maps.take(mt.Len())
+		l := w.maps.Take(mt.Len())
 		for k := range l {
 			m := mt.At(k)
 			l[k] = d.Mapping{
-				MemoryStart:      nonZero(m.MemoryStart()),
-				MemoryLimit:      nonZero(m.MemoryLimit()),
-				FileOffset:       nonZero(m.FileOffset()),
-				FilenameStrindex: nz(m.FilenameStrindex()),
+				MemoryStart:      cb.NonZero(m.MemoryStart()),
+				MemoryLimit:      cb.NonZero(m.MemoryLimit()),
+				FileOffset:       cb.NonZero(m.FileOffset()),
+				FilenameStrindex: cb.NZ(m.FilenameStrindex()),
 				AttributeIndices: w.i32s(m.AttributeIndices()),
 			}
 		}
-		out.MappingTable = some(l)
+		out.MappingTable = cb.Some(l)
 	}
 	if lt := dc.LocationTable(); lt.Len() > 0 {
-		l := w.locs.take(lt.Len())
+		l := w.locs.Take(lt.Len())
 		for k := range l {
 			loc := lt.At(k)
 			var lines dagr.Opt[[]d.Line]
 			if ls := loc.Lines(); ls.Len() > 0 {
-				ln := w.lines.take(ls.Len())
+				ln := w.lines.Take(ls.Len())
 				for j := range ln {
 					x := ls.At(j)
-					ln[j] = d.Line{FunctionIndex: nz(x.FunctionIndex()), Line: nz(x.Line()), Column: nz(x.Column())}
+					ln[j] = d.Line{FunctionIndex: cb.NZ(x.FunctionIndex()), Line: cb.NZ(x.Line()), Column: cb.NZ(x.Column())}
 				}
-				lines = some(ln)
+				lines = cb.Some(ln)
 			}
 			l[k] = d.Location{
-				MappingIndex:     nz(loc.MappingIndex()),
-				Address:          nonZero(loc.Address()),
+				MappingIndex:     cb.NZ(loc.MappingIndex()),
+				Address:          cb.NonZero(loc.Address()),
 				Lines:            lines,
 				AttributeIndices: w.i32s(loc.AttributeIndices()),
 			}
 		}
-		out.LocationTable = some(l)
+		out.LocationTable = cb.Some(l)
 	}
 	if ft := dc.FunctionTable(); ft.Len() > 0 {
-		l := w.funcs.take(ft.Len())
+		l := w.funcs.Take(ft.Len())
 		for k := range l {
 			f := ft.At(k)
 			l[k] = d.Function{
-				NameStrindex:       nz(f.NameStrindex()),
-				SystemNameStrindex: nz(f.SystemNameStrindex()),
-				FilenameStrindex:   nz(f.FilenameStrindex()),
-				StartLine:          nz(f.StartLine()),
+				NameStrindex:       cb.NZ(f.NameStrindex()),
+				SystemNameStrindex: cb.NZ(f.SystemNameStrindex()),
+				FilenameStrindex:   cb.NZ(f.FilenameStrindex()),
+				StartLine:          cb.NZ(f.StartLine()),
 			}
 		}
-		out.FunctionTable = some(l)
+		out.FunctionTable = cb.Some(l)
 	}
 	if kt := dc.LinkTable(); kt.Len() > 0 {
-		l := w.links.take(kt.Len())
+		l := w.links.Take(kt.Len())
 		for k := range l {
 			x := kt.At(k)
 			tid, sid := x.TraceID(), x.SpanID()
-			l[k] = d.Link{TraceID: idInto(&w.bytes, tid[:]), SpanID: idInto(&w.bytes, sid[:])}
+			l[k] = d.Link{TraceID: cb.IDInto(&w.bytes, tid[:]), SpanID: cb.IDInto(&w.bytes, sid[:])}
 		}
-		out.LinkTable = some(l)
+		out.LinkTable = cb.Some(l)
 	}
 	if at := dc.AttributeTable(); at.Len() > 0 {
-		l := w.attrs.take(at.Len())
+		l := w.attrs.Take(at.Len())
 		for k := range l {
 			a := at.At(k)
-			kv := d.KeyValueAndUnit{KeyStrindex: nz(a.KeyStrindex()), UnitStrindex: nz(a.UnitStrindex())}
-			if v, ok := attrValue(a.Value()); ok {
-				kv.Value = some(v)
+			kv := d.KeyValueAndUnit{KeyStrindex: cb.NZ(a.KeyStrindex()), UnitStrindex: cb.NZ(a.UnitStrindex())}
+			if v, ok := cb.AttrValue(a.Value()); ok {
+				kv.Value = cb.Some(v)
 			}
 			l[k] = kv
 		}
-		out.AttributeTable = some(l)
+		out.AttributeTable = cb.Some(l)
 	}
 	if st := dc.StackTable(); st.Len() > 0 {
-		l := w.stks.take(st.Len())
+		l := w.stks.Take(st.Len())
 		for k := range l {
 			l[k] = d.Stack{LocationIndices: w.i32s(st.At(k).LocationIndices())}
 		}
-		out.StackTable = some(l)
+		out.StackTable = cb.Some(l)
 	}
 	return d.PutProfilesDictionary(out, b, buf, i)
 }
@@ -237,37 +239,37 @@ func (w *StreamBuilder) profileValue(p pprofile.Profile) d.Profile {
 	w.reset()
 	out := d.Profile{
 		SampleType:             valueType(p.SampleType()),
-		TimeUnixNano:           nonZero(uint64(p.Time())),
-		DurationNano:           nonZero(p.DurationNano()),
+		TimeUnixNano:           cb.NonZero(uint64(p.Time())),
+		DurationNano:           cb.NonZero(p.DurationNano()),
 		PeriodType:             valueType(p.PeriodType()),
-		Period:                 nz(p.Period()),
-		DroppedAttributesCount: nonZeroU32(p.DroppedAttributesCount()),
-		OriginalPayloadFormat:  nonEmpty(p.OriginalPayloadFormat()),
+		Period:                 cb.NZ(p.Period()),
+		DroppedAttributesCount: cb.NonZeroU32(p.DroppedAttributesCount()),
+		OriginalPayloadFormat:  cb.NonEmpty(p.OriginalPayloadFormat()),
 		AttributeIndices:       w.i32s(p.AttributeIndices()),
 	}
 	if op := p.OriginalPayload(); op.Len() > 0 {
-		l := w.bytes.take(op.Len())
+		l := w.bytes.Take(op.Len())
 		for k := range l {
 			l[k] = op.At(k)
 		}
-		out.OriginalPayload = some(l)
+		out.OriginalPayload = cb.Some(l)
 	}
 	if id := p.ProfileID(); !id.IsEmpty() {
-		out.ProfileID = idInto(&w.bytes, id[:])
+		out.ProfileID = cb.IDInto(&w.bytes, id[:])
 	}
 	if ss := p.Samples(); ss.Len() > 0 {
-		l := w.smp.take(ss.Len())
+		l := w.smp.Take(ss.Len())
 		for k := range l {
 			s := ss.At(k)
 			l[k] = d.Sample{
-				StackIndex:         nz(s.StackIndex()),
+				StackIndex:         cb.NZ(s.StackIndex()),
 				AttributeIndices:   w.i32s(s.AttributeIndices()),
-				LinkIndex:          nz(s.LinkIndex()),
+				LinkIndex:          cb.NZ(s.LinkIndex()),
 				Values:             w.i64s(s.Values()),
 				TimestampsUnixNano: w.u64s(s.TimestampsUnixNano()),
 			}
 		}
-		out.Samples = some(l)
+		out.Samples = cb.Some(l)
 	}
 	return out
 }

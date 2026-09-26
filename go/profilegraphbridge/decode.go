@@ -7,7 +7,7 @@ import (
 	g "otlpgen/otlpprofilesgraph"
 )
 
-// MaxValueDepth bounds nested attribute values, as pdatabridge.MaxValueDepth does.
+// MaxValueDepth bounds nested attribute values, as commonbridge.MaxValueDepth does.
 const MaxValueDepth = 32
 
 // ToProfiles materialises an OtlpProfilesGraph buffer into pdata, rebuilding the

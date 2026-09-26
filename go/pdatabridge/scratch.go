@@ -4,7 +4,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
+	cb "otlpdagr/commonbridge"
 	"otlpgen/dagr"
+	cd "otlpgen/otlpcommondirect"
 	d "otlpgen/otlptracesdirect"
 )
 
@@ -26,7 +28,7 @@ type Scratch struct {
 	ss    []d.ScopeSpans
 	spans []d.Span
 	evs   []d.Event
-	kv    []d.KeyValue
+	kv    []cd.KeyValue
 	ids   []byte // trace / span / parent ids, 8 or 16 bytes each, sub-sliced
 
 	// cursors into the backings during a fill
@@ -94,22 +96,22 @@ func (s *Scratch) putID(b []byte) []byte {
 }
 
 // putAttrs copies a pcommon.Map into the shared KeyValue backing.
-func (s *Scratch) putAttrs(m pcommon.Map) dagr.Opt[[]d.KeyValue] {
+func (s *Scratch) putAttrs(m pcommon.Map) dagr.Opt[[]cd.KeyValue] {
 	if m.Len() == 0 {
-		return dagr.Opt[[]d.KeyValue]{}
+		return dagr.Opt[[]cd.KeyValue]{}
 	}
 	lo := s.nKV
 	m.Range(func(k string, v pcommon.Value) bool {
-		av, ok := attrValue(v)
+		av, ok := cb.AttrValue(v)
 		if !ok {
 			return true
 		}
-		s.kv[s.nKV] = d.KeyValue{Key: nonEmpty(k), Value: some(av)}
+		s.kv[s.nKV] = cd.KeyValue{Key: cb.NonEmpty(k), Value: cb.Some(av)}
 		s.nKV++
 		return true
 	})
 	if s.nKV == lo {
-		return dagr.Opt[[]d.KeyValue]{}
+		return dagr.Opt[[]cd.KeyValue]{}
 	}
 	return dagr.Some(s.kv[lo:s.nKV])
 }
@@ -133,59 +135,59 @@ func (s *Scratch) ToValueReuse(td ptrace.Traces) d.TracesData {
 				s.nSpan++
 			}
 			s.ss[s.nSS] = d.ScopeSpans{
-				Scope: some(d.InstrumentationScope{
-					Name:                   nonEmpty(ssSrc.Scope().Name()),
-					Version:                nonEmpty(ssSrc.Scope().Version()),
+				Scope: cb.Some(cd.InstrumentationScope{
+					Name:                   cb.NonEmpty(ssSrc.Scope().Name()),
+					Version:                cb.NonEmpty(ssSrc.Scope().Version()),
 					Attributes:             s.putAttrs(ssSrc.Scope().Attributes()),
-					DroppedAttributesCount: nonZeroU32(ssSrc.Scope().DroppedAttributesCount()),
+					DroppedAttributesCount: cb.NonZeroU32(ssSrc.Scope().DroppedAttributesCount()),
 				}),
-				Spans:     optSlice(s.spans[spLo:s.nSpan]),
-				SchemaURL: nonEmpty(ssSrc.SchemaUrl()),
+				Spans:     cb.OptSlice(s.spans[spLo:s.nSpan]),
+				SchemaURL: cb.NonEmpty(ssSrc.SchemaUrl()),
 			}
 			s.nSS++
 		}
 		s.rs[s.nRS] = d.ResourceSpans{
-			Resource: some(d.Resource{
+			Resource: cb.Some(cd.Resource{
 				Attributes:             s.putAttrs(src.Resource().Attributes()),
-				DroppedAttributesCount: nonZeroU32(src.Resource().DroppedAttributesCount()),
+				DroppedAttributesCount: cb.NonZeroU32(src.Resource().DroppedAttributesCount()),
 			}),
-			ScopeSpans: optSlice(s.ss[ssLo:s.nSS]),
-			SchemaURL:  nonEmpty(src.SchemaUrl()),
+			ScopeSpans: cb.OptSlice(s.ss[ssLo:s.nSS]),
+			SchemaURL:  cb.NonEmpty(src.SchemaUrl()),
 		}
 		s.nRS++
 	}
-	return d.TracesData{ResourceSpans: optSlice(s.rs[rsLo:s.nRS])}
+	return d.TracesData{ResourceSpans: cb.OptSlice(s.rs[rsLo:s.nRS])}
 }
 
 func (s *Scratch) toSpan(src ptrace.Span) d.Span {
 	out := d.Span{
-		Name:              nonEmpty(src.Name()),
-		Kind:              some(d.SpanKind(src.Kind())),
-		StartTimeUnixNano: nonZero(uint64(src.StartTimestamp())),
-		EndTimeUnixNano:   nonZero(uint64(src.EndTimestamp())),
-		TraceState:        nonEmpty(src.TraceState().AsRaw()),
+		Name:              cb.NonEmpty(src.Name()),
+		Kind:              cb.Some(d.SpanKind(src.Kind())),
+		StartTimeUnixNano: cb.NonZero(uint64(src.StartTimestamp())),
+		EndTimeUnixNano:   cb.NonZero(uint64(src.EndTimestamp())),
+		TraceState:        cb.NonEmpty(src.TraceState().AsRaw()),
 		Attributes:        s.putAttrs(src.Attributes()),
 	}
 	if tid := src.TraceID(); !tid.IsEmpty() {
-		out.TraceID = some(s.putID(tid[:]))
+		out.TraceID = cb.Some(s.putID(tid[:]))
 	}
 	if sid := src.SpanID(); !sid.IsEmpty() {
-		out.SpanID = some(s.putID(sid[:]))
+		out.SpanID = cb.Some(s.putID(sid[:]))
 	}
 	if psid := src.ParentSpanID(); !psid.IsEmpty() {
-		out.ParentSpanID = some(s.putID(psid[:]))
+		out.ParentSpanID = cb.Some(s.putID(psid[:]))
 	}
 	if f := src.Flags(); f != 0 {
-		out.Flags = some(f)
+		out.Flags = cb.Some(f)
 	}
 	if n := src.DroppedAttributesCount(); n != 0 {
-		out.DroppedAttributesCount = some(n)
+		out.DroppedAttributesCount = cb.Some(n)
 	}
 	if n := src.DroppedEventsCount(); n != 0 {
-		out.DroppedEventsCount = some(n)
+		out.DroppedEventsCount = cb.Some(n)
 	}
 	if n := src.DroppedLinksCount(); n != 0 {
-		out.DroppedLinksCount = some(n)
+		out.DroppedLinksCount = cb.Some(n)
 	}
 
 	if evs := src.Events(); evs.Len() > 0 {
@@ -193,20 +195,20 @@ func (s *Scratch) toSpan(src ptrace.Span) d.Span {
 		for i := 0; i < evs.Len(); i++ {
 			e := evs.At(i)
 			s.evs[s.nEv] = d.Event{
-				TimeUnixNano:           nonZero(uint64(e.Timestamp())),
-				Name:                   nonEmpty(e.Name()),
+				TimeUnixNano:           cb.NonZero(uint64(e.Timestamp())),
+				Name:                   cb.NonEmpty(e.Name()),
 				Attributes:             s.putAttrs(e.Attributes()),
-				DroppedAttributesCount: nonZeroU32(e.DroppedAttributesCount()),
+				DroppedAttributesCount: cb.NonZeroU32(e.DroppedAttributesCount()),
 			}
 			s.nEv++
 		}
-		out.Events = optSlice(s.evs[lo:s.nEv])
+		out.Events = cb.OptSlice(s.evs[lo:s.nEv])
 	}
 
 	if st := src.Status(); st.Code() != ptrace.StatusCodeUnset || st.Message() != "" {
-		out.Status = some(d.Status{
-			Message: nonEmpty(st.Message()),
-			Code:    some(d.StatusCode(st.Code())),
+		out.Status = cb.Some(d.Status{
+			Message: cb.NonEmpty(st.Message()),
+			Code:    cb.Some(d.StatusCode(st.Code())),
 		})
 	}
 	return out

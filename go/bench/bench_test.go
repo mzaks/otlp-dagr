@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 
+	cg "otlpgen/otlpcommon"
 	g "otlpgen/otlptraces"
 
 	"otlpdagr/internal/fixture"
@@ -178,7 +179,7 @@ func attrDagr(buf []byte) uint64 {
 					kv := sp.AttributesAt(x)
 					// KeyBytes borrows the buffer; Key() would allocate a string.
 					if kb, ok := kv.KeyBytes(); ok && bytes.Equal(kb, routeKeyBytes) {
-						if v, ok := kv.Value(); ok && v.Tag() == g.AnyValueTagStringValue {
+						if v, ok := kv.Value(); ok && v.Tag() == cg.AnyValueTagStringValue {
 							acc += uint64(len(v.StringValueBytes()))
 						}
 						break
@@ -492,7 +493,7 @@ func attrDagrIter(buf []byte) uint64 {
 			for sp := range ss.SpansAll() {
 				for kv := range sp.AttributesAll() {
 					if kb, ok := kv.KeyBytes(); ok && bytes.Equal(kb, routeKeyBytes) {
-						if v, ok := kv.Value(); ok && v.Tag() == g.AnyValueTagStringValue {
+						if v, ok := kv.Value(); ok && v.Tag() == cg.AnyValueTagStringValue {
 							acc += uint64(len(v.StringValueBytes()))
 						}
 						break

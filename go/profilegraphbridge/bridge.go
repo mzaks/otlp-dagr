@@ -14,8 +14,9 @@
 // of which the proto permits ("MUST NOT have any observable effects") — so the round
 // trip is checked on the RESOLVED data, not on the dictionary's bytes.
 //
-// It has no common_gen.go: the shared conversions there build direct-builder values, and
-// this graph has no direct builder, so the attribute conversion is its own (arena) form.
+// It does not use package commonbridge: OtlpProfilesGraph holds OtlpCommon as vtable
+// nodes (its own copy, not otlpgen/otlpcommon), and has no direct builder, so the
+// attribute conversion is its own (arena) form.
 package profilegraphbridge
 
 import (

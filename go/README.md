@@ -4,7 +4,9 @@
   one package per signal — `otlptraces`, `otlpmetrics`, `otlplogs`, `otlpprofiles` (lazy
   accessors, arena, serializer), each with its `…direct` value-tree builder — and one
   DataSink package per spool (`spanlog`, `metriclog`, `logrecordlog`, `profilelog`).
-  Every signal package carries its own flattened copy of `OtlpCommon`. Not committed.
+  The imported `OtlpCommon` is its own package pair, `otlpcommon` + `otlpcommondirect`,
+  which the four signal packages refer to; `otlpprofilesgraph` holds it as vtable nodes
+  and keeps its own copy. Not committed.
 - `internal/seed/` — the deterministic 500-span batch, a port of `otlp_seed()` from the
   Dagr repo's `benchmarks/proto_vs_dagr` (same LCG, same draw order).
 - `internal/fixture/` — that seed materialised as `ptrace.Traces`; a WIDE batch per
@@ -19,11 +21,10 @@
   through Slice and Map (`array_value` / `kvlist_value`); the decoder bounds its own
   recursion at `MaxValueDepth`.
 - `metricbridge/`, `logbridge/`, `profilebridge/` — the same for `pmetric`, `plog` and
-  `pprofile`. The shared-message conversions (attributes, `AnyValue`, `Resource`,
-  `InstrumentationScope`) live once in `pdatabridge/common.go` and are copied into each
-  as `common_gen.go` by `../regen.sh` (gitignored) — the signal packages' Go types
-  differ, so no generic can share them. Decoders walk arrays with the generated cursors,
-  never `{F}At(i)`.
+  `pprofile`. Decoders walk arrays with the generated cursors, never `{F}At(i)`.
+- `commonbridge/` — the shared-message conversions (attributes, `AnyValue`, `Resource`,
+  `InstrumentationScope`) and the encode/decode helpers all four bridges use, written
+  once against `otlpgen/otlpcommon`.
 - `profilegraphbridge/` — `pprofile` ⇄ `OtlpProfilesGraph`, the experimental graph form
   of profiles: indices become node references on the way in (one arena node per
   dictionary entry), and the dictionary is rebuilt from each node's `BufferPos()` on the

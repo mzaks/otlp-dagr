@@ -4,7 +4,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
+	cb "otlpdagr/commonbridge"
 	"otlpgen/dagr"
+	cd "otlpgen/otlpcommondirect"
 	d "otlpgen/otlptracesdirect"
 )
 
@@ -26,14 +28,14 @@ import (
 type StreamBuilder struct {
 	b *dagr.Builder
 
-	spanKV  []d.KeyValue // one span's attributes
-	evKV    []d.KeyValue // all of one span's event attributes
-	events  []d.Event    // one span's events
-	lkKV    []d.KeyValue // all of one span's link attributes
-	links   []d.Link     // one span's links
-	linkIDs []byte       // one span's link trace + span ids, 24 bytes each
-	otherKV []d.KeyValue // resource / scope attributes (once per batch)
-	ids     [32]byte     // one span's trace + span + parent ids
+	spanKV  []cd.KeyValue // one span's attributes
+	evKV    []cd.KeyValue // all of one span's event attributes
+	events  []d.Event     // one span's events
+	lkKV    []cd.KeyValue // all of one span's link attributes
+	links   []d.Link      // one span's links
+	linkIDs []byte        // one span's link trace + span ids, 24 bytes each
+	otherKV []cd.KeyValue // resource / scope attributes (once per batch)
+	ids     [32]byte      // one span's trace + span + parent ids
 }
 
 func NewStreamBuilder() *StreamBuilder { return &StreamBuilder{b: dagr.NewBuilder(0)} }
@@ -123,11 +125,11 @@ func (w *StreamBuilder) putResourceSpans(rs ptrace.ResourceSpans, b *dagr.Builde
 		buf, i = dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-a))
 		buf, i = dagr.PutLEBAt(buf, i, 3)
 	}
-	res := d.Resource{
+	res := cd.Resource{
 		Attributes:             w.otherAttrs(rs.Resource().Attributes()),
-		DroppedAttributesCount: nonZeroU32(rs.Resource().DroppedAttributesCount()),
+		DroppedAttributesCount: cb.NonZeroU32(rs.Resource().DroppedAttributesCount()),
 	}
-	buf, i = d.PutResource(res, b, buf, i)
+	buf, i = cd.PutResource(res, b, buf, i)
 	buf, i = dagr.PutLEBAt(buf, i, 1) // field tag, as PutResourceSpans emits it
 	return dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
 }
@@ -147,13 +149,13 @@ func (w *StreamBuilder) putScopeSpans(ss ptrace.ScopeSpans, b *dagr.Builder, buf
 		buf, i = dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-a))
 		buf, i = dagr.PutLEBAt(buf, i, 3)
 	}
-	sc := d.InstrumentationScope{
-		Name:                   nonEmpty(ss.Scope().Name()),
-		Version:                nonEmpty(ss.Scope().Version()),
+	sc := cd.InstrumentationScope{
+		Name:                   cb.NonEmpty(ss.Scope().Name()),
+		Version:                cb.NonEmpty(ss.Scope().Version()),
 		Attributes:             w.otherAttrs(ss.Scope().Attributes()),
-		DroppedAttributesCount: nonZeroU32(ss.Scope().DroppedAttributesCount()),
+		DroppedAttributesCount: cb.NonZeroU32(ss.Scope().DroppedAttributesCount()),
 	}
-	buf, i = d.PutInstrumentationScope(sc, b, buf, i)
+	buf, i = cd.PutInstrumentationScope(sc, b, buf, i)
 	buf, i = dagr.PutLEBAt(buf, i, 1) // field tag, as PutScopeSpans emits it
 	return dagr.PutLEBAt(buf, i, uint64((len(buf)-i)-before))
 }
@@ -167,12 +169,12 @@ func (w *StreamBuilder) putScopeSpans(ss ptrace.ScopeSpans, b *dagr.Builder, buf
 // Nested Slice / Map values allocate inside attrValue — they must, since the builder
 // keeps a pointer into the slice each level hands it, so that storage cannot be scratch
 // the next attribute reuses. The flat path this function exists for stays allocation-free.
-func fillAttrs(dst []d.KeyValue, m pcommon.Map) []d.KeyValue {
+func fillAttrs(dst []cd.KeyValue, m pcommon.Map) []cd.KeyValue {
 	n := 0
 	m.Range(func(k string, v pcommon.Value) bool {
-		kv := d.KeyValue{Key: nonEmpty(k)}
-		if av, ok := attrValue(v); ok {
-			kv.Value = some(av)
+		kv := cd.KeyValue{Key: cb.NonEmpty(k)}
+		if av, ok := cb.AttrValue(v); ok {
+			kv.Value = cb.Some(av)
 		}
 		dst[n] = kv
 		n++
@@ -181,53 +183,53 @@ func fillAttrs(dst []d.KeyValue, m pcommon.Map) []d.KeyValue {
 	return dst[:n]
 }
 
-func (w *StreamBuilder) otherAttrs(m pcommon.Map) dagr.Opt[[]d.KeyValue] {
+func (w *StreamBuilder) otherAttrs(m pcommon.Map) dagr.Opt[[]cd.KeyValue] {
 	if m.Len() == 0 {
-		return dagr.Opt[[]d.KeyValue]{}
+		return dagr.Opt[[]cd.KeyValue]{}
 	}
 	w.otherKV = fit(w.otherKV, m.Len())
-	return optSlice(fillAttrs(w.otherKV, m))
+	return cb.OptSlice(fillAttrs(w.otherKV, m))
 }
 
 func (w *StreamBuilder) spanValue(src ptrace.Span) d.Span {
 	out := d.Span{
-		Name:              nonEmpty(src.Name()),
-		Kind:              some(d.SpanKind(src.Kind())),
-		StartTimeUnixNano: nonZero(uint64(src.StartTimestamp())),
-		EndTimeUnixNano:   nonZero(uint64(src.EndTimestamp())),
-		TraceState:        nonEmpty(src.TraceState().AsRaw()),
+		Name:              cb.NonEmpty(src.Name()),
+		Kind:              cb.Some(d.SpanKind(src.Kind())),
+		StartTimeUnixNano: cb.NonZero(uint64(src.StartTimestamp())),
+		EndTimeUnixNano:   cb.NonZero(uint64(src.EndTimestamp())),
+		TraceState:        cb.NonEmpty(src.TraceState().AsRaw()),
 	}
 	if a := src.Attributes(); a.Len() > 0 {
 		w.spanKV = fit(w.spanKV, a.Len())
-		out.Attributes = optSlice(fillAttrs(w.spanKV, a))
+		out.Attributes = cb.OptSlice(fillAttrs(w.spanKV, a))
 	}
 
 	// ids live in one 32-byte scratch: the span is written before the next one starts
 	p := 0
 	if tid := src.TraceID(); !tid.IsEmpty() {
 		p += copy(w.ids[p:], tid[:])
-		out.TraceID = some(w.ids[p-len(tid) : p])
+		out.TraceID = cb.Some(w.ids[p-len(tid) : p])
 	}
 	if sid := src.SpanID(); !sid.IsEmpty() {
 		p += copy(w.ids[p:], sid[:])
-		out.SpanID = some(w.ids[p-len(sid) : p])
+		out.SpanID = cb.Some(w.ids[p-len(sid) : p])
 	}
 	if psid := src.ParentSpanID(); !psid.IsEmpty() {
 		p += copy(w.ids[p:], psid[:])
-		out.ParentSpanID = some(w.ids[p-len(psid) : p])
+		out.ParentSpanID = cb.Some(w.ids[p-len(psid) : p])
 	}
 
 	if f := src.Flags(); f != 0 {
-		out.Flags = some(f)
+		out.Flags = cb.Some(f)
 	}
 	if n := src.DroppedAttributesCount(); n != 0 {
-		out.DroppedAttributesCount = some(n)
+		out.DroppedAttributesCount = cb.Some(n)
 	}
 	if n := src.DroppedEventsCount(); n != 0 {
-		out.DroppedEventsCount = some(n)
+		out.DroppedEventsCount = cb.Some(n)
 	}
 	if n := src.DroppedLinksCount(); n != 0 {
-		out.DroppedLinksCount = some(n)
+		out.DroppedLinksCount = cb.Some(n)
 	}
 
 	if evs := src.Events(); evs.Len() > 0 {
@@ -241,18 +243,18 @@ func (w *StreamBuilder) spanValue(src ptrace.Span) d.Span {
 		for k := 0; k < evs.Len(); k++ {
 			e := evs.At(k)
 			ev := d.Event{
-				TimeUnixNano:           nonZero(uint64(e.Timestamp())),
-				Name:                   nonEmpty(e.Name()),
-				DroppedAttributesCount: nonZeroU32(e.DroppedAttributesCount()),
+				TimeUnixNano:           cb.NonZero(uint64(e.Timestamp())),
+				Name:                   cb.NonEmpty(e.Name()),
+				DroppedAttributesCount: cb.NonZeroU32(e.DroppedAttributesCount()),
 			}
 			if a := e.Attributes(); a.Len() > 0 {
 				got := fillAttrs(w.evKV[used:used+a.Len()], a)
 				used += len(got)
-				ev.Attributes = optSlice(got)
+				ev.Attributes = cb.OptSlice(got)
 			}
 			w.events[k] = ev
 		}
-		out.Events = optSlice(w.events)
+		out.Events = cb.OptSlice(w.events)
 	}
 
 	if lks := src.Links(); lks.Len() > 0 {
@@ -267,34 +269,34 @@ func (w *StreamBuilder) spanValue(src ptrace.Span) d.Span {
 		for k := 0; k < lks.Len(); k++ {
 			l := lks.At(k)
 			lk := d.Link{
-				TraceState:             nonEmpty(l.TraceState().AsRaw()),
-				DroppedAttributesCount: nonZeroU32(l.DroppedAttributesCount()),
+				TraceState:             cb.NonEmpty(l.TraceState().AsRaw()),
+				DroppedAttributesCount: cb.NonZeroU32(l.DroppedAttributesCount()),
 			}
 			if tid := l.TraceID(); !tid.IsEmpty() {
 				idp += copy(w.linkIDs[idp:], tid[:])
-				lk.TraceID = some(w.linkIDs[idp-len(tid) : idp])
+				lk.TraceID = cb.Some(w.linkIDs[idp-len(tid) : idp])
 			}
 			if sid := l.SpanID(); !sid.IsEmpty() {
 				idp += copy(w.linkIDs[idp:], sid[:])
-				lk.SpanID = some(w.linkIDs[idp-len(sid) : idp])
+				lk.SpanID = cb.Some(w.linkIDs[idp-len(sid) : idp])
 			}
 			if f := l.Flags(); f != 0 {
-				lk.Flags = some(f)
+				lk.Flags = cb.Some(f)
 			}
 			if a := l.Attributes(); a.Len() > 0 {
 				got := fillAttrs(w.lkKV[used:used+a.Len()], a)
 				used += len(got)
-				lk.Attributes = optSlice(got)
+				lk.Attributes = cb.OptSlice(got)
 			}
 			w.links[k] = lk
 		}
-		out.Links = optSlice(w.links)
+		out.Links = cb.OptSlice(w.links)
 	}
 
 	if st := src.Status(); st.Code() != ptrace.StatusCodeUnset || st.Message() != "" {
-		out.Status = some(d.Status{
-			Message: nonEmpty(st.Message()),
-			Code:    some(d.StatusCode(st.Code())),
+		out.Status = cb.Some(d.Status{
+			Message: cb.NonEmpty(st.Message()),
+			Code:    cb.Some(d.StatusCode(st.Code())),
 		})
 	}
 	return out

@@ -26,6 +26,7 @@ import (
 	"otlpdagr/logbridge"
 	"otlpdagr/metricbridge"
 	"otlpdagr/profilebridge"
+	cg "otlpgen/otlpcommon"
 	gl "otlpgen/otlplogs"
 	dl "otlpgen/otlplogsdirect"
 	gm "otlpgen/otlpmetrics"
@@ -220,7 +221,7 @@ func sweepLogsDagr() int {
 			for lr, ok := li.Next(); ok; lr, ok = li.Next() {
 				if sev, _ := lr.SeverityNumber(); sev >= gl.SeverityNumber(plog.SeverityNumberWarn) {
 					n++
-					if b, ok := lr.Body(); ok && b.Tag() == gl.AnyValueTagStringValue {
+					if b, ok := lr.Body(); ok && b.Tag() == cg.AnyValueTagStringValue {
 						n += len(b.StringValueBytes())
 					}
 				}

@@ -3,7 +3,7 @@
 // builder; decode (ToLogs) is the compatibility path for an unmodified pipeline.
 //
 // The shared messages (attributes, the AnyValue body, Resource, InstrumentationScope)
-// come from common_gen.go, which regen.sh copies from pdatabridge/common.go.
+// convert through package commonbridge.
 package logbridge
 
 import (
@@ -11,6 +11,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 
 	d "otlpgen/otlplogsdirect"
+
+	cb "otlpdagr/commonbridge"
 )
 
 // ToBytes serializes ld into an OtlpLogs buffer via the direct builder.
@@ -32,18 +34,18 @@ func ToValue(ld plog.Logs) d.LogsData {
 				outLR = append(outLR, toLogRecord(lrs.At(k)))
 			}
 			outSL = append(outSL, d.ScopeLogs{
-				Scope:      some(scope(sl.Scope())),
-				LogRecords: optSlice(outLR),
-				SchemaURL:  nonEmpty(sl.SchemaUrl()),
+				Scope:      cb.Some(cb.Scope(sl.Scope())),
+				LogRecords: cb.OptSlice(outLR),
+				SchemaURL:  cb.NonEmpty(sl.SchemaUrl()),
 			})
 		}
 		outRL = append(outRL, d.ResourceLogs{
-			Resource:  some(resource(rl.Resource())),
-			ScopeLogs: optSlice(outSL),
-			SchemaURL: nonEmpty(rl.SchemaUrl()),
+			Resource:  cb.Some(cb.Resource(rl.Resource())),
+			ScopeLogs: cb.OptSlice(outSL),
+			SchemaURL: cb.NonEmpty(rl.SchemaUrl()),
 		})
 	}
-	return d.LogsData{ResourceLogs: optSlice(outRL)}
+	return d.LogsData{ResourceLogs: cb.OptSlice(outRL)}
 }
 
 // Builder is the reusable form: one scratch buffer, reset per Build.
@@ -60,21 +62,21 @@ func (w *Builder) BuildAppend(dst []byte, ld plog.Logs) []byte {
 
 func toLogRecord(r plog.LogRecord) d.LogRecord {
 	out := d.LogRecord{
-		TimeUnixNano:           nonZero(uint64(r.Timestamp())),
-		ObservedTimeUnixNano:   nonZero(uint64(r.ObservedTimestamp())),
-		SeverityNumber:         nz(d.SeverityNumber(r.SeverityNumber())),
-		SeverityText:           nonEmpty(r.SeverityText()),
-		Attributes:             optSlice(keyValues(r.Attributes())),
-		DroppedAttributesCount: nonZeroU32(r.DroppedAttributesCount()),
-		Flags:                  nonZeroU32(uint32(r.Flags())),
-		TraceID:                traceID(r.TraceID()),
-		SpanID:                 spanID(r.SpanID()),
-		EventName:              nonEmpty(r.EventName()),
+		TimeUnixNano:           cb.NonZero(uint64(r.Timestamp())),
+		ObservedTimeUnixNano:   cb.NonZero(uint64(r.ObservedTimestamp())),
+		SeverityNumber:         cb.NZ(d.SeverityNumber(r.SeverityNumber())),
+		SeverityText:           cb.NonEmpty(r.SeverityText()),
+		Attributes:             cb.OptSlice(cb.KeyValues(r.Attributes())),
+		DroppedAttributesCount: cb.NonZeroU32(r.DroppedAttributesCount()),
+		Flags:                  cb.NonZeroU32(uint32(r.Flags())),
+		TraceID:                cb.TraceID(r.TraceID()),
+		SpanID:                 cb.SpanID(r.SpanID()),
+		EventName:              cb.NonEmpty(r.EventName()),
 	}
 	// The body is an AnyValue like any attribute value; an Empty body is an absent one.
 	if r.Body().Type() != pcommon.ValueTypeEmpty {
-		if v, ok := attrValue(r.Body()); ok {
-			out.Body = some(v)
+		if v, ok := cb.AttrValue(r.Body()); ok {
+			out.Body = cb.Some(v)
 		}
 	}
 	return out

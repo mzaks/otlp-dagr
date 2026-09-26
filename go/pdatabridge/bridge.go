@@ -15,6 +15,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	d "otlpgen/otlptracesdirect"
+
+	cb "otlpdagr/commonbridge"
 )
 
 // ToBytes serializes td into an OTLP-on-Dagr buffer via the direct builder.
@@ -57,80 +59,80 @@ func toValue(td ptrace.Traces) d.TracesData {
 	for i := 0; i < rss.Len(); i++ {
 		rs := rss.At(i)
 
-		res := resource(rs.Resource())
+		res := cb.Resource(rs.Resource())
 		sss := rs.ScopeSpans()
 		outSS := make([]d.ScopeSpans, 0, sss.Len())
 		for j := 0; j < sss.Len(); j++ {
 			ss := sss.At(j)
-			sc := scope(ss.Scope())
+			sc := cb.Scope(ss.Scope())
 			sps := ss.Spans()
 			outSp := make([]d.Span, 0, sps.Len())
 			for k := 0; k < sps.Len(); k++ {
 				outSp = append(outSp, toSpan(sps.At(k)))
 			}
 			outSS = append(outSS, d.ScopeSpans{
-				Scope:     some(sc),
-				Spans:     optSlice(outSp),
-				SchemaURL: nonEmpty(ss.SchemaUrl()),
+				Scope:     cb.Some(sc),
+				Spans:     cb.OptSlice(outSp),
+				SchemaURL: cb.NonEmpty(ss.SchemaUrl()),
 			})
 		}
 		outRS = append(outRS, d.ResourceSpans{
-			Resource:   some(res),
-			ScopeSpans: optSlice(outSS),
-			SchemaURL:  nonEmpty(rs.SchemaUrl()),
+			Resource:   cb.Some(res),
+			ScopeSpans: cb.OptSlice(outSS),
+			SchemaURL:  cb.NonEmpty(rs.SchemaUrl()),
 		})
 	}
-	return d.TracesData{ResourceSpans: optSlice(outRS)}
+	return d.TracesData{ResourceSpans: cb.OptSlice(outRS)}
 }
 
 func toSpan(s ptrace.Span) d.Span {
 	out := d.Span{
-		Name:              nonEmpty(s.Name()),
-		Kind:              some(d.SpanKind(s.Kind())),
-		StartTimeUnixNano: nonZero(uint64(s.StartTimestamp())),
-		EndTimeUnixNano:   nonZero(uint64(s.EndTimestamp())),
-		Attributes:        optSlice(keyValues(s.Attributes())),
-		TraceState:        nonEmpty(s.TraceState().AsRaw()),
+		Name:              cb.NonEmpty(s.Name()),
+		Kind:              cb.Some(d.SpanKind(s.Kind())),
+		StartTimeUnixNano: cb.NonZero(uint64(s.StartTimestamp())),
+		EndTimeUnixNano:   cb.NonZero(uint64(s.EndTimestamp())),
+		Attributes:        cb.OptSlice(cb.KeyValues(s.Attributes())),
+		TraceState:        cb.NonEmpty(s.TraceState().AsRaw()),
 	}
 	tid := s.TraceID()
 	if !tid.IsEmpty() {
-		out.TraceID = some(append([]byte(nil), tid[:]...))
+		out.TraceID = cb.Some(append([]byte(nil), tid[:]...))
 	}
 	sid := s.SpanID()
 	if !sid.IsEmpty() {
-		out.SpanID = some(append([]byte(nil), sid[:]...))
+		out.SpanID = cb.Some(append([]byte(nil), sid[:]...))
 	}
 	psid := s.ParentSpanID()
 	if !psid.IsEmpty() {
-		out.ParentSpanID = some(append([]byte(nil), psid[:]...))
+		out.ParentSpanID = cb.Some(append([]byte(nil), psid[:]...))
 	}
 	if f := s.Flags(); f != 0 {
-		out.Flags = some(f)
+		out.Flags = cb.Some(f)
 	}
 	if n := s.DroppedAttributesCount(); n != 0 {
-		out.DroppedAttributesCount = some(n)
+		out.DroppedAttributesCount = cb.Some(n)
 	}
 	if n := s.DroppedEventsCount(); n != 0 {
-		out.DroppedEventsCount = some(n)
+		out.DroppedEventsCount = cb.Some(n)
 	}
 	if n := s.DroppedLinksCount(); n != 0 {
-		out.DroppedLinksCount = some(n)
+		out.DroppedLinksCount = cb.Some(n)
 	}
 
 	evs := s.Events()
 	if evs.Len() > 0 {
-		out.Events = some(make([]d.Event, 0, evs.Len()))
+		out.Events = cb.Some(make([]d.Event, 0, evs.Len()))
 		lst := out.Events.V
 		for i := 0; i < evs.Len(); i++ {
 			e := evs.At(i)
 			lst = append(lst, d.Event{
-				TimeUnixNano:           nonZero(uint64(e.Timestamp())),
-				Name:                   nonEmpty(e.Name()),
-				Attributes:             optSlice(keyValues(e.Attributes())),
-				DroppedAttributesCount: nonZeroU32(e.DroppedAttributesCount()),
+				TimeUnixNano:           cb.NonZero(uint64(e.Timestamp())),
+				Name:                   cb.NonEmpty(e.Name()),
+				Attributes:             cb.OptSlice(cb.KeyValues(e.Attributes())),
+				DroppedAttributesCount: cb.NonZeroU32(e.DroppedAttributesCount()),
 			})
 		}
-		out.Events = some(lst)
+		out.Events = cb.Some(lst)
 	}
 
 	lks := s.Links()
@@ -139,31 +141,31 @@ func toSpan(s ptrace.Span) d.Span {
 		for i := 0; i < lks.Len(); i++ {
 			l := lks.At(i)
 			lk := d.Link{
-				TraceState:             nonEmpty(l.TraceState().AsRaw()),
-				Attributes:             optSlice(keyValues(l.Attributes())),
-				DroppedAttributesCount: nonZeroU32(l.DroppedAttributesCount()),
+				TraceState:             cb.NonEmpty(l.TraceState().AsRaw()),
+				Attributes:             cb.OptSlice(cb.KeyValues(l.Attributes())),
+				DroppedAttributesCount: cb.NonZeroU32(l.DroppedAttributesCount()),
 			}
 			ltid := l.TraceID()
 			if !ltid.IsEmpty() {
-				lk.TraceID = some(append([]byte(nil), ltid[:]...))
+				lk.TraceID = cb.Some(append([]byte(nil), ltid[:]...))
 			}
 			lsid := l.SpanID()
 			if !lsid.IsEmpty() {
-				lk.SpanID = some(append([]byte(nil), lsid[:]...))
+				lk.SpanID = cb.Some(append([]byte(nil), lsid[:]...))
 			}
 			if f := l.Flags(); f != 0 {
-				lk.Flags = some(f)
+				lk.Flags = cb.Some(f)
 			}
 			lst = append(lst, lk)
 		}
-		out.Links = optSlice(lst)
+		out.Links = cb.OptSlice(lst)
 	}
 
 	st := s.Status()
 	if st.Code() != ptrace.StatusCodeUnset || st.Message() != "" {
-		out.Status = some(d.Status{
-			Message: nonEmpty(st.Message()),
-			Code:    some(d.StatusCode(st.Code())),
+		out.Status = cb.Some(d.Status{
+			Message: cb.NonEmpty(st.Message()),
+			Code:    cb.Some(d.StatusCode(st.Code())),
 		})
 	}
 	return out

@@ -535,6 +535,14 @@ it; each signal has its own generated Go package (`otlpgen/otlp{traces,metrics,l
 one `dagrfile` exporter/receiver serves all four. `./ocb/roundtrip.sh` runs every signal
 through a real collector.
 
+`OtlpCommon` is also ONE Go package. Dagr emits an imported graph once, as
+`otlpgen/otlpcommon` + `otlpcommondirect`, and each signal package refers to it
+(`otlpcommon.KeyValueAccessor`) instead of declaring its own copy (Dagr spec/37 §18,
+2026-09-26). So the conversions for the shared messages live once, in `commonbridge`,
+where they used to be copied into every bridge by `regen.sh` because each signal's
+`KeyValue` was a distinct Go type. `OtlpProfilesGraph` holds `OtlpCommon` as vtable
+nodes — a different wire shape — and keeps its own copy.
+
 Realistic batches (metrics 600 data points; logs 500 records; profiles 2,000 samples over
 a 400-function dictionary), `go test ./bench -run TestSignalSizes -v` and
 `-bench BenchmarkSignal` (encode = `encode/dagr_stream`):
