@@ -26,9 +26,14 @@ go/                see go/README.md
   exporter/        dagrfileexporter — pdata in, one Dagr record per batch
   receiver/        dagrfilereceiver  — the spool back into an unmodified pipeline
   store/           the query surface: crash ring, retention, tail sampling
-  cmd/otlpdagrctl/ the round-trip harness (send / spool / verify)
+  shm/             the same-host metrics region: a shared-memory file under a seqlock
+  shmexporter/     an OTel Go SDK exporter that publishes into the region
+  shmreceiver/     dagrshmreceiver — reads the regions in a directory
+  cmd/otlpdagrctl/ the round-trip harness (send / spool / verify / shmcheck)
+  cmd/shmdemo/     an SDK app exporting into a region (round trip, phase C)
+  cmd/shmbench/    the same load over shm / OTLP/gRPC / Prometheus (samehost.sh)
 ocb/               collector builder manifest, pipeline configs, roundtrip.sh,
-                   default.pgo (the collector's PGO profile)
+                   samehost.sh, default.pgo (the collector's PGO profile)
 ```
 
 ```bash
@@ -38,6 +43,7 @@ cd go && go test ./bench -bench . -benchmem -benchtime 500x
 cd go && go test ./store -bench . -benchtime 2s        # the store's numbers
 ./ocb/roundtrip.sh                                    # build a collector, round trip through it
 ./ocb/roundtrip.sh profile                            # re-record ocb/default.pgo under load, rebuild
+./ocb/samehost.sh                                     # shared memory vs OTLP/gRPC vs Prometheus
 ```
 
 `schema.py` is `packed`, not `frozen+packed`, deliberately — frozen is positional and
@@ -650,6 +656,56 @@ or resuming a spool as the wrong signal is refused before anything is truncated,
 compaction keep the header a spool was created with. It costs 91 bytes per spool, once, most of them the producer string.
 Adding it was a wire break (`spec/15` §11), and spools written before it fail with
 `spool.ErrNoHeader`.
+
+## The same-host hop: metrics in shared memory
+
+An app and a collector on one host usually talk OTLP/gRPC over localhost: the SDK
+marshals, the kernel copies, the collector unmarshals. Here the app's SDK exporter
+writes its current metric state into a **shared-memory region** — a Dagr SharedBuffer
+(`MetricsRegion` in `schema.py`, a fixed 719 KB layout: 512 data points, typed
+attributes, explicit-bucket histograms) in a file both processes map — under a seqlock,
+and the collector's `dagrshm` receiver reads it in place at its own cadence (`spec/38`
+§7.1).
+
+```go
+exp, _ := shmexporter.New("/run/otlp-dagr/checkout-1.dagrshm", "checkout")
+mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp)))
+```
+
+```yaml
+receivers:
+  dagrshm:
+    directory: /run/otlp-dagr
+    interval: 10s
+```
+
+Each export is ONE seqlock write of the cumulative state — a store into shared memory,
+no wire format, no syscall, no queue — so the app never waits for the collector. A point
+that does not fit is dropped and counted (`dropped_points`), never written in part. The
+reader's read is bounded: an app killed mid-write leaves its region busy for good, and
+the receiver skips it instead of hanging. A region carries no layout fingerprint, so the
+receiver checks its `magic` and `version` first.
+
+**Measured** (`./ocb/samehost.sh`: one app with 500 streams recorded and exported every
+100 ms for 20 s, one collector discarding what it receives; five rounds, modes alternating;
+a check pass first requires every mode to deliver all 500 streams):
+
+| | app CPU | collector CPU | total | per export (app) | per ingest (collector) |
+|---|---|---|---|---|---|
+| **shared memory** | 0.225 s | 0.076 s | **0.301 s** | 0.98 ms | 0.38 ms |
+| OTLP/gRPC | 0.372 s | 0.104 s | 0.476 s | 1.71 ms | 0.52 ms |
+| Prometheus scrape | 1.210 s | 1.176 s | 2.386 s | 5.9 ms | 5.9 ms |
+
+**1.58x less CPU than OTLP/gRPC, 7.9x less than Prometheus.** It is not 10x because the
+region itself is cheap — `shmexporter.Export` is 30 µs with no allocations, the collector's
+snapshot 10 µs — while both ends pay what every path pays: the SDK's own collection
+(354 µs a batch) and the pdata a receiver must build (96 µs; OTLP's decode of the same
+batch is 103 µs). `go test ./shmreceiver -bench .` has the pieces.
+
+Delivery waits for the receiver's poll, values are cumulative only, and one process
+writes a region. The two Kubernetes shapes are the same component: a sidecar shares an
+`emptyDir{medium: Memory}` volume; a DaemonSet collector needs a `hostPath` onto a tmpfs
+in the app pods, which the `restricted` Pod Security level forbids (`spec/38` §7.1, D4).
 
 ## OTAP: Dagr into OpenTelemetry Arrow
 

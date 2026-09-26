@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build a real collector with ocb and run every signal through it — traces, metrics, logs
 # and profiles, each out to its own Dagr spool and back in — spec/38 §6.1.1 gate 2, plus
-# gates 3 and 4 on the files the collector produced.
+# gates 3 and 4 on the files the collector produced — and the same-host metrics hop: an
+# SDK exporting into a shared-memory region the `dagrshm` receiver reads (spec/38 §7.1).
 #
 #   ./ocb/roundtrip.sh              # build if missing or stale, then round trip
 #   ./ocb/roundtrip.sh build        # build the collector only
@@ -159,6 +160,20 @@ echo "==> comparing what came out with what went in"
 for s in $SIGNALS; do
   (cd go && go run ./cmd/otlpdagrctl verify -signal "$s" -path "$WORK/out-$s.json" -batches "$BATCHES")
 done
+
+echo "==> phase C: SDK -> shared-memory region -> dagrshm receiver -> $WORK/out-shm.json"
+rm -rf "$WORK/shm" "$WORK/out-shm.json"
+mkdir -p "$WORK/shm"
+render "$ROOT/ocb/collector-shm.yaml" "$WORK/collector-shm.yaml"
+pid=$(run_phase shm "$WORK/collector-shm.yaml")
+trap 'kill "$pid" 2>/dev/null || true' EXIT
+(cd go && go run ./cmd/shmdemo -dir "$WORK/shm" -service demo -requests 5000 -routes 4 \
+  -interval 200ms -hold 2s)
+kill -INT "$pid"; wait "$pid" 2>/dev/null || true
+trap - EXIT
+[ ! -e "$WORK/shm/demo.dagrshm" ] || { echo "FAIL: shmdemo left its region behind" >&2; exit 1; }
+(cd go && go run ./cmd/otlpdagrctl shmcheck -path "$WORK/out-shm.json" -service demo \
+  -requests 5000 -routes 4)
 
 echo "==> a kill mid-write is detected, not silently accepted"
 cp "$WORK/spans.dagr" "$WORK/torn.dagr"

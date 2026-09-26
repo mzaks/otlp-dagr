@@ -1,0 +1,16 @@
+# ocb/samehost.sh, mode prom: the collector scrapes the app's Prometheus endpoint.
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: shmbench
+          scrape_interval: ${INTERVAL}
+          scrape_timeout: ${INTERVAL}
+          static_configs:
+            - targets: ["127.0.0.1:9464"]
+exporters:
+  nop:
+service:
+  telemetry: {logs: {level: warn}, metrics: {level: none}}
+  pipelines:
+    metrics: {receivers: [prometheus], exporters: [nop]}

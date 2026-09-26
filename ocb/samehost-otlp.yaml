@@ -1,0 +1,12 @@
+# ocb/samehost.sh, mode otlp: OTLP/gRPC over localhost, the default same-host path.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+exporters:
+  nop:
+service:
+  telemetry: {logs: {level: warn}, metrics: {level: none}}
+  pipelines:
+    metrics: {receivers: [otlp], exporters: [nop]}

@@ -1,0 +1,21 @@
+# Phase C — the same-host metrics hop (spec/38 §7.1): an app's SDK exports into a
+# shared-memory region under ${WORK}/shm, and the `dagrshm` receiver reads it in place.
+receivers:
+  dagrshm:
+    directory: ${WORK}/shm
+    interval: 100ms
+
+exporters:
+  file/shm:
+    path: ${WORK}/out-shm.json
+
+service:
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [dagrshm]
+      exporters: [file/shm]

@@ -10,13 +10,12 @@ and may be hand-edited (re-running the transpiler would overwrite it).
 SIGNALS: traces, metrics, logs and profiles (`v1development` — the proto says `Status:
 [Alpha]`, and pdata ships it as its own `pprofile` module, v0.x). The shared messages of
 `common.proto` and `resource.proto` live ONCE, in `OtlpCommon`, and each signal imports
-it — `spec/38` §2.5, and the D6 question of whether that split holds. The two targets
-this repo builds FLATTEN an import (Go: `dagr/codegen/go/graphs.py`; Rust: the same rule),
-so each signal's generated code carries its own copy of `KeyValue` / `Resource` / ...,
-and the Go target is built with `layout="package-per-graph"` so four copies do not meet
-in one Go package. The import buys one declaration in THIS file, not one type in the
-generated code — the wire is the same either way, since a packed field is addressed by
-its position and never by a type id.
+it — `spec/38` §2.5, and the D6 question of whether that split holds. The Go target is
+built with `layout="package-per-graph"`, under which Dagr emits `OtlpCommon` once as its
+own package pair (`otlpgen/otlpcommon` + `…direct`) that the four signal packages refer
+to (Dagr spec/37 §18); Rust flattens the import, so each signal's crate module carries
+its own copy. The wire is the same either way, since a packed field is addressed by its
+position and never by a type id.
 
 LAYOUT: every transpiled message is stored `packed`, deliberately — see
 `spec/38-otlp-on-dagr.md` §2.3 in the Dagr repo. `frozen`/`frozen+packed` is smaller
@@ -67,7 +66,8 @@ place, with the direct builder preserved.
 """
 
 from dagr.dsl import (
-    DataGraph, DataSink, ImportedGraph, Node, Enum, UnionType, raw, required, t, timestamp,
+    DataGraph, DataSink, SharedBuffer, cap,
+    ImportedGraph, Node, Enum, UnionType, raw, required, t, timestamp,
     int_val, float_val, bool_val, string_val, b64_val, array_val,
     union_ref_val, ref_val, nil,
 )
@@ -759,12 +759,81 @@ ProfileLog = DataSink(
 )
 
 
+# ── The same-host hop: a metrics region in shared memory (spec/38 §7.1) ─────────────────
+#
+# A SharedBuffer is a FIXED-LAYOUT overlay (Dagr spec/20): every field has a fixed slot,
+# strings and arrays reserve a capacity, and two processes map the same bytes. An app's
+# SDK exporter writes its CURRENT metric state here under a seqlock — one write per
+# export, never blocking on a reader — and the collector's `dagrshm` receiver snapshots it
+# at its own cadence. The values are cumulative: the region is the app's state, like a
+# Prometheus endpoint, not a stream of deltas.
+#
+# It is generic — any app, one receiver — so it is a table of DATA POINTS, one per metric
+# stream, each carrying its own name / unit / kind / attributes. What does not fit a cap
+# (more points, attributes, buckets, longer strings) is dropped and counted, never
+# written half. Exponential histograms and exemplars are not carried.
+#
+# There is no fingerprint on the wire (spec/20 §8, §13): a reader MUST check `magic` and
+# `version` right after attaching, and every layout change is a version bump — the
+# receipt pins the layout, and `dagr build` refuses a change that moves a byte.
+MetricsRegionMagic = 0x524D4744    # "DGMR" little-endian
+MetricsRegionVersion = 1
+
+MetricsRegion = SharedBuffer(
+    'MetricsRegion', root_type='State', concurrency='seqlock',
+    node_types=[
+        Enum('PointKind', {0: 'gauge_int', 1: 'gauge_double', 2: 'sum_int', 3: 'sum_double',
+                           4: 'histogram'}),
+        Enum('AttrKind', {0: 'string', 1: 'int', 2: 'double', 3: 'bool'}),
+        # one attribute: its value in the slot its kind names (bool: int_value 0/1)
+        Node('Attr', frozen=True, fields=[
+            'key' >> t.utf8 >> cap(32) >> required,
+            'kind' >> t.ref('AttrKind') >> required,
+            'string_value' >> t.utf8 >> cap(64) >> required,
+            'int_value' >> t.i64 >> required,
+            'double_value' >> t.f64 >> required,
+        ]),
+        # one metric stream: an instrument x one attribute set
+        Node('Point', frozen=True, fields=[
+            'scope' >> t.utf8 >> cap(32) >> required,
+            'name' >> t.utf8 >> cap(64) >> required,
+            'unit' >> t.utf8 >> cap(16) >> required,
+            'kind' >> t.ref('PointKind') >> required,
+            'monotonic' >> t.bool >> required,
+            'attrs' >> t.ref('Attr').array >> cap(8) >> required,
+            'time_unix_nano' >> t.u64 >> required,
+            # gauge / sum: the value; histogram: `double_value` is the sum
+            'int_value' >> t.i64 >> required,
+            'double_value' >> t.f64 >> required,
+            # histogram (explicit buckets): len(bucket_counts) == len(bounds) + 1
+            'count' >> t.u64 >> required,
+            'bounds' >> t.f64.array >> cap(15) >> required,
+            'bucket_counts' >> t.u64.array >> cap(16) >> required,
+            'min' >> t.f64,
+            'max' >> t.f64,
+        ]),
+        # the root — not `Region`: the Rust / Swift overlays declare a `Region` of their own
+        Node('State', frozen=True, fields=[
+            'magic' >> t.u32 >> required,
+            'version' >> t.u16 >> required,
+            'service' >> t.utf8 >> cap(64) >> required,
+            'resource' >> t.ref('Attr').array >> cap(16) >> required,
+            'start_unix_nano' >> t.u64 >> required,     # the cumulative start time
+            'write_unix_nano' >> t.u64 >> required,     # the last export
+            'exports' >> t.u64 >> required,
+            'dropped_points' >> t.u32 >> required,      # in the last export
+            'points' >> t.ref('Point').array >> cap(512) >> required,
+        ]),
+    ],
+)
+
+
 library = Library(
     'otlp_dagr',
     # OtlpCommon is NOT listed: it has no root and is never serialized on its own — each
     # signal reaches it through its import.
     schemas=[OtlpTraces, OtlpMetrics, OtlpLogs, OtlpProfiles, OtlpProfilesGraph,
-             SpanLog, MetricLog, LogRecordLog, ProfileLog],
+             SpanLog, MetricLog, LogRecordLog, ProfileLog, MetricsRegion],
     targets=[
         # The Go emitter always writes the lazy accessors, the arena, the serializer
         # and the direct builder (spec/37 §16) — there is no feature list to opt into.

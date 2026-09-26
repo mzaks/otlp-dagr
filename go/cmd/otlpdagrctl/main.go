@@ -39,7 +39,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(errors.New("usage: otlpdagrctl send|spool|verify|fixtures [flags]"))
+		fail(errors.New("usage: otlpdagrctl send|spool|verify|fixtures|shmcheck [flags]"))
 	}
 	var err error
 	switch os.Args[1] {
@@ -51,6 +51,10 @@ func main() {
 		err = verify(os.Args[2:])
 	case "fixtures":
 		err = fixtures(os.Args[2:])
+	case "shmcheck":
+		err = shmCheck(os.Args[2:])
+	case "points":
+		err = points(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}

@@ -22,6 +22,11 @@
   recursion at `MaxValueDepth`.
 - `metricbridge/`, `logbridge/`, `profilebridge/` — the same for `pmetric`, `plog` and
   `pprofile`. Decoders walk arrays with the generated cursors, never `{F}At(i)`.
+- `shm/`, `shmexporter/`, `shmreceiver/` — the same-host metrics hop (Dagr spec/38 §7.1):
+  the `MetricsRegion` SharedBuffer in a file both processes map (`gen/metricsregion`), an
+  OTel Go SDK exporter that publishes each export as one seqlock write, and the
+  `dagrshm` collector receiver that polls a directory of regions. `cmd/shmdemo` and
+  `cmd/shmbench` are the apps `../ocb/roundtrip.sh` (phase C) and `../ocb/samehost.sh` run.
 - `commonbridge/` — the shared-message conversions (attributes, `AnyValue`, `Resource`,
   `InstrumentationScope`) and the encode/decode helpers all four bridges use, written
   once against `otlpgen/otlpcommon`.

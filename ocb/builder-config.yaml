@@ -18,12 +18,20 @@ receivers:
   # OTAP in: the OpenTelemetry Arrow receiver, fed by the Dagr -> OTAP bridge
   # (rust/otap/e2e.sh)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/otelarrowreceiver v${CONTRIB_VERSION}
+  # the Prometheus baseline of the same-host measurement (ocb/samehost.sh, spec/38 §7.1)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v${CONTRIB_VERSION}
   - gomod: otlpdagr v0.0.0
     import: otlpdagr/receiver
     name: dagrfilereceiver
+  # the same-host metrics hop: shared-memory regions written by shmexporter (spec/38 §7.1)
+  - gomod: otlpdagr v0.0.0
+    import: otlpdagr/shmreceiver
+    name: dagrshmreceiver
 
 exporters:
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v${OTELCOL_VERSION}
+  # discards what it gets: the same-host measurement times ingest, not an exporter
+  - gomod: go.opentelemetry.io/collector/exporter/nopexporter v${OTELCOL_VERSION}
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v${CONTRIB_VERSION}
   - gomod: otlpdagr v0.0.0
     import: otlpdagr/exporter
