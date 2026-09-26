@@ -4689,9 +4689,9 @@
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-26T06:11:32.542638+00:00",
+    "generated_at": "2026-09-26T14:37:05.690973+00:00",
     "host": null,
-    "tool_version": "dagr 2026.9.1"
+    "tool_version": "dagr 2026.9.2"
   },
   "receipt_version": 1,
   "targets": [
