@@ -723,10 +723,30 @@ load as the table above:
 than Prometheus; the app spends less than the SDK spends on recording alone (0.028 s).
 What is left is the collector building pdata. `spec/38` §7.1 has the details.
 
+**Every core gets its own copy of the values.** One atomic add is cheap only while one
+core owns the cache line; 16 cores adding to one counter made it 53 ns an add. The values
+file therefore holds one copy of the region per P (`GOMAXPROCS` — which follows a
+container's CPU limit — capped at 64; `shmdirect.Options{Shards: 1}` turns it off), a
+recording goes to its P's copy, and the receiver adds the copies up. The count is chosen
+at startup, not in the schema — a SharedBuffer's size is fixed at codegen; the schema only
+records it (`Values.shards`) so the reader can check every copy.
+
+| | 1 goroutine | 16 cores, one stream |
+|---|---|---|
+| counter `Add`, one copy | 1.83 ns | 57 ns |
+| counter `Add`, a copy per P | 3.3 ns | **0.31 ns** |
+| histogram `Record`, one copy | 4.9 ns | 491 ns |
+| histogram `Record`, a copy per P | 6.3 ns | **0.62 ns** |
+
+The pin that finds the P costs 1.5 ns when nothing contends, and the receiver's merge
+34 µs a poll for 16 copies of 500 streams; end to end the benchmark app above (one
+goroutine) goes from 0.103 s to 0.106 s. `spec/38` §7.1.1.
+
 Delivery waits for the receiver's poll, values are cumulative only, and one process
-writes a region. The two Kubernetes shapes are the same component: a sidecar shares an
-`emptyDir{medium: Memory}` volume; a DaemonSet collector needs a `hostPath` onto a tmpfs
-in the app pods, which the `restricted` Pod Security level forbids (`spec/38` §7.1, D4).
+writes a region. Deploy it as a **sidecar**: both containers share an
+`emptyDir{medium: Memory}` volume (the copies count against the pod's memory, 90 KB
+each). A DaemonSet collector would need a `hostPath` onto a tmpfs in the app pods, which
+the `restricted` Pod Security level forbids (`spec/38` §7.1, D4).
 
 ## OTAP: Dagr into OpenTelemetry Arrow
 

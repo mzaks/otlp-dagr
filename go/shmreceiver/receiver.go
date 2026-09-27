@@ -69,6 +69,7 @@ func createMetrics(_ context.Context, set receiver.Settings, cfg component.Confi
 type region struct {
 	r       *shm.Region
 	vals    *shm.Mapping // a direct-instrument app's values (shmdirect), else nil
+	copies  []mv.Values  // vals' per-core copies
 	ino     uint64
 	exports uint64 // the last export forwarded
 }
@@ -136,7 +137,7 @@ func (r *shmReceiver) Poll(ctx context.Context) {
 			// direct instruments: the values change with no export, so a direct region is
 			// forwarded on every poll, as a scrape would be — and its last descriptor write
 			// is when a stream was registered, not a sign of life
-			OverlayValues(s, mv.Wrap(reg.vals.Mem), uint64(time.Now().UnixNano()))
+			OverlayValues(s, reg.copies, uint64(time.Now().UnixNano()))
 		} else {
 			if s.Exports() == reg.exports {
 				continue // nothing new since the last forward
@@ -183,9 +184,10 @@ func (r *shmReceiver) attach(p string) (*region, error) {
 	reg := &region{r: sr, ino: uint64(ino)}
 	// a direct-instrument app writes its values next to the descriptors (shmdirect)
 	if vm, err := shm.OpenMapping(p+".values", mv.ByteSize); err == nil {
-		if v := mv.Wrap(vm.Mem); v.Magic() == shmdirect.ValuesMagic && v.Version() == shmdirect.ValuesVersion {
-			reg.vals = vm
+		if copies, err := shmdirect.Values(vm.Mem); err == nil {
+			reg.vals, reg.copies = vm, copies
 		} else {
+			r.log.Debug("dagrshm: foreign values file", zap.String("path", p), zap.Error(err))
 			vm.Close()
 		}
 	}

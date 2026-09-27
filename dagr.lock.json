@@ -4887,11 +4887,20 @@
                 "points": {
                   "cap": 512,
                   "kind": "node",
-                  "len": 90120,
+                  "len": 90124,
                   "offset": 0,
                   "present": null,
                   "type": "Value",
                   "width": 176
+                },
+                "shards": {
+                  "cap": 0,
+                  "kind": "scalar",
+                  "len": null,
+                  "offset": 90120,
+                  "present": null,
+                  "type": "u32",
+                  "width": 4
                 },
                 "version": {
                   "cap": 0,
@@ -5017,6 +5026,18 @@
                 "default": null,
                 "index": null,
                 "name": "version",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "shards",
                 "options": 1,
                 "timestamp": null,
                 "type": {
@@ -5667,7 +5688,7 @@
     },
     "wire_format_version": 1
   },
-  "library_hash": "sha256:4aeeb3620c881efd2ecc855352062ccf5b47e82723322ba50e7d649abc434ab3",
+  "library_hash": "sha256:f06aab2b09b2aa2106e7025044caa650014b4852da244698f74a4ea8e271411b",
   "outputs": {
     "go/gen/dagr/owner.go": "sha256:f8f0332e779d87407fa596c72e02cc3dbf24aebe886ab8f8ea3e30b02548bd24",
     "go/gen/dagr/reader.go": "sha256:52241688c1535ab8ea98b014aebebe26e8a3baab174840afe07ea0d4e0231363",
@@ -5676,7 +5697,7 @@
     "go/gen/logrecordlog/log_record_log.go": "sha256:e67b250b2119825742ca13bfafa54ae22203d92abc1108578bf0c7d27013a694",
     "go/gen/metriclog/metric_log.go": "sha256:d822ce872de066e8fa6325fee446a158c04491abf98daaa2db86c1f1aea2bc3e",
     "go/gen/metricsregion/metrics_region.go": "sha256:a641ffd7016935b784388eba1ca995a110abd6e4df5e05ce140769b971b9254c",
-    "go/gen/metricsvalues/metrics_values.go": "sha256:8b0eb5e5d52513a74b24f121dd3d95dd7bccf309ee3d36b1168bd1638b4fd8c4",
+    "go/gen/metricsvalues/metrics_values.go": "sha256:c708259dadb0ce6878494ba2b34b74d02f36436dfd36acde2a63e2216152d809",
     "go/gen/otlpcommon/otlp_common.go": "sha256:d344f08fb25164e6156d889f61bffc2276aa91a75381e064664e960fc5a6da94",
     "go/gen/otlpcommondirect/otlp_common.go": "sha256:ef85449d80fd9577a07c8ec624f01b5c600306f8438e3bf49cfa5343170ffde4",
     "go/gen/otlplogs/otlp_logs.go": "sha256:afd109e7a9ba49631adf6394c1f4062d7d5c8702c2e4398d71748a991f4e909e",
@@ -5707,7 +5728,7 @@
     "rust/gen/src/log_record_log_sink.rs": "sha256:7af4d62ca1a7acf8aa8b7b71800c3d2c21dc1619fa66b777b43ac7ff73d19ddf",
     "rust/gen/src/metric_log_sink.rs": "sha256:b7b3d37efe4374c446108119b761fee30a9be2d9d19d42aff87c1a7133d6a3f8",
     "rust/gen/src/metrics_region_shared_buffer.rs": "sha256:ed3abb2af5499a688069b1d3b7621996e565f754b8f9f12572cebc415e256788",
-    "rust/gen/src/metrics_values_shared_buffer.rs": "sha256:3e1b074997d0bd2d722e60ed23e73677a51da2ddd38554836e4fda0a1763b3e3",
+    "rust/gen/src/metrics_values_shared_buffer.rs": "sha256:be4a3f4b6d2fb5cb2fb2ef00d61a14ed485d667e0b1f229ca2ce3e83fde07907",
     "rust/gen/src/otlp_logs.rs": "sha256:a76890fe32b194f0e9143aa2ec1de8357790891dbc64d7aaee76f24166c5bbb8",
     "rust/gen/src/otlp_logs_arrow.rs": "sha256:e06201e12ef72b697b88eff1192c423272950f03b8606f1a8f445335b1121638",
     "rust/gen/src/otlp_logs_core.rs": "sha256:6984e96ef9fb383da67accc38e0c6489bd6d3aefb7be95b7b0543a187779692c",
@@ -5732,7 +5753,7 @@
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-27T12:43:37.527061+00:00",
+    "generated_at": "2026-09-27T16:24:24.548020+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.2"
   },

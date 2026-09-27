@@ -841,8 +841,15 @@ MetricsRegion = SharedBuffer(
 # `buckets[k]` counts values in (bounds[k-1], bounds[k]], `min` / `max` start at +Inf /
 # -Inf when the stream is registered. No multi-field snapshot: a reader may see a
 # histogram's count and sum a few records apart (as Prometheus clients do).
+#
+# Per-core copies (spec/38 §7.1.1): the values file holds `shards` copies of this region
+# back to back, each starting on a 128-byte boundary; a recording goes to the copy of the
+# scheduler slot (P) it runs on, so cores never fight over a stream's cache line. The
+# count is the app's, chosen at startup from GOMAXPROCS — a SharedBuffer's size is fixed
+# at codegen, so it cannot be a capacity here. Every copy carries the same `shards`; the
+# reader adds the copies up (min / max: the extremes; gauges live in copy 0 only).
 MetricsValuesMagic = 0x564D4744    # "DGMV" little-endian
-MetricsValuesVersion = 1
+MetricsValuesVersion = 2
 
 MetricsValues = SharedBuffer(
     'MetricsValues', root_type='Values', concurrency='atomic',
@@ -858,6 +865,7 @@ MetricsValues = SharedBuffer(
         Node('Values', frozen=True, fields=[
             'magic' >> t.u32 >> required,
             'version' >> t.u32 >> required,
+            'shards' >> t.u32 >> required,         # copies in the file, this one included
             'points' >> t.ref('Value').array >> cap(512) >> required,
         ]),
     ],

@@ -48,10 +48,11 @@ func main() {
 	interval := flag.Duration("interval", 100*time.Millisecond, "export (and record) interval")
 	duration := flag.Duration("duration", 20*time.Second, "how long to run")
 	streams := flag.Int("streams", 500, "metric streams (a multiple of 10)")
+	shards := flag.Int("shards", 0, "direct: per-core copies of the values region (0: GOMAXPROCS)")
 	flag.Parse()
 	ctx := context.Background()
 	if *mode == "direct" {
-		runDirect(filepath.Join(*dir, "shmbench.dagrshm"), *interval, *duration, *streams)
+		runDirect(filepath.Join(*dir, "shmbench.dagrshm"), *interval, *duration, *streams, *shards)
 		return
 	}
 
@@ -155,8 +156,8 @@ func fail(err error) {
 // runDirect is the same load as the SDK modes — the same streams, each recorded once per
 // interval with the same values — through shmdirect's bound instruments: no SDK, no
 // collect, no export; the collector reads the values region at its own cadence.
-func runDirect(path string, interval, duration time.Duration, streams int) {
-	p, err := shmdirect.NewProvider(path, "shmbench-direct")
+func runDirect(path string, interval, duration time.Duration, streams, shards int) {
+	p, err := shmdirect.NewProviderWith(path, "shmbench-direct", shmdirect.Options{Shards: shards})
 	if err != nil {
 		fail(err)
 	}
@@ -211,6 +212,6 @@ func runDirect(path string, interval, duration time.Duration, streams int) {
 	p.Shutdown()
 	var ru syscall.Rusage
 	syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
-	fmt.Printf("shmbench mode=direct streams=%d interval=%s duration=%s cpu=%.3fs\n",
-		streams, interval, duration, time.Duration(ru.Utime.Nano()+ru.Stime.Nano()).Seconds())
+	fmt.Printf("shmbench mode=direct streams=%d shards=%d interval=%s duration=%s cpu=%.3fs\n",
+		streams, p.Shards(), interval, duration, time.Duration(ru.Utime.Nano()+ru.Stime.Nano()).Seconds())
 }

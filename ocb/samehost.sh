@@ -26,6 +26,7 @@ DURATION="${DURATION:-20s}"
 STREAMS="${STREAMS:-500}"
 ROUNDS="${ROUNDS:-3}"
 MODES="${MODES:-none direct shm otlp prom}"   # none: the app's recording cost alone, no collector
+SHARDS="${SHARDS:-0}"   # direct: per-core copies of the values region (0: GOMAXPROCS, 1: none)
 
 # rebuild a collector older than any Go source, the manifest or the PGO profile it is built
 # from (the rule roundtrip.sh uses) — a stale binary would measure the OLD receiver
@@ -92,7 +93,7 @@ run() {  # run <mode> <nop|file> <duration> -> "app_cpu collector_cpu"
   local c0 c1 out
   c0=$(cpu "$pid")
   out=$("$WORK/shmbench" -mode "$mode" -dir "$WORK/samehost" -interval "$INTERVAL" \
-          -duration "$dur" -streams "$STREAMS")
+          -duration "$dur" -streams "$STREAMS" -shards "$SHARDS")
   c1=$(cpu "$pid")
   stop "$pid" "$mode"
   trap - EXIT

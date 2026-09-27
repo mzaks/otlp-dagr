@@ -21,8 +21,10 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 
 	mr "otlpgen/metricsregion"
+	mv "otlpgen/metricsvalues"
 
 	"otlpdagr/shm"
+	"otlpdagr/shmdirect"
 	"otlpdagr/shmexporter"
 )
 
@@ -138,4 +140,55 @@ func BenchmarkIngestOTLPUnmarshal(b *testing.B) {
 		}
 	}
 	b.ReportMetric(float64(len(raw)), "otlp-bytes")
+}
+
+// A direct-instrument app's values merged into the descriptor snapshot, per poll — the
+// part of a direct ingest that grows with the app's per-core copies (spec/38 §7.1.1).
+// Same 500 streams as load500: 200 counters, 100 gauges, 200 histograms.
+func BenchmarkIngestDirectOverlay(b *testing.B) {
+	for _, n := range []int{1, 16, 64} {
+		b.Run(fmt.Sprintf("copies=%d", n), func(b *testing.B) {
+			path := filepath.Join(b.TempDir(), "d.dagrshm")
+			p, err := shmdirect.NewProviderWith(path, "bench", shmdirect.Options{Shards: n})
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { p.Shutdown() })
+			for s := 0; s < 10; s++ {
+				at := []shmdirect.Attr{{Key: "route", Value: fmt.Sprintf("/api/v1/r%d", s)}, {Key: "code", Value: 200 + s}}
+				for i := 0; i < 20; i++ {
+					c, _ := p.Int64Counter("bench", fmt.Sprintf("counter_%d", i), "1", at...)
+					c.Add(int64(i + s))
+					h, _ := p.Float64Histogram("bench", fmt.Sprintf("hist_%d", i), "ms", nil, at...)
+					h.Record(float64(i * s))
+				}
+				for i := 0; i < 10; i++ {
+					g, _ := p.Float64Gauge("bench", fmt.Sprintf("gauge_%d", i), "1", at...)
+					g.Record(float64(i))
+				}
+			}
+			r, err := shm.Open(path)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { r.Close() })
+			s, err := r.Snapshot(make([]byte, mr.ByteSize), 100)
+			if err != nil {
+				b.Fatal(err)
+			}
+			vm, err := shm.OpenMapping(path+".values", mv.ByteSize)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { vm.Close() })
+			copies, err := shmdirect.Values(vm.Mem)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				OverlayValues(s, copies, 1)
+			}
+		})
+	}
 }

@@ -166,28 +166,53 @@ func putAttr(dst pcommon.Map, a mr.Attr) {
 // descriptor snapshot, stamped now: stream i's value slot is values point i. The snapshot
 // is the receiver's private copy, so ToMetrics then converts it as it converts an
 // exporter's region. Values are read word by word — each atomically, not all at one
-// instant (spec/40 §2).
-func OverlayValues(s mr.State, v mv.Values, now uint64) {
+// instant (spec/40 §2) — and merged over the app's per-core copies (spec/38 §7.1.1):
+// sums, counts and buckets add up, min / max are the extremes, a gauge is copy 0's.
+func OverlayValues(s mr.State, copies []mv.Values, now uint64) {
 	n := int(s.PointsLen())
-	if m := v.PointsLen(); m < n {
-		n = m
+	for _, v := range copies { // a stream is registered once every copy has its slot
+		n = min(n, v.PointsLen())
 	}
 	for i := 0; i < n; i++ {
-		p, val := s.Points(i), v.Points(i)
+		p := s.Points(i)
 		switch p.Kind() {
-		case mr.PointKindGaugeInt, mr.PointKindSumInt:
-			p.SetIntValue(val.IntValue())
-		case mr.PointKindGaugeDouble, mr.PointKindSumDouble:
-			p.SetDoubleValue(val.DoubleValue())
-		case mr.PointKindHistogram:
-			c := val.Count()
-			p.SetCount(c)
-			p.SetDoubleValue(val.DoubleValue())
-			nb := int(p.BucketCountsLen())
-			for k := 0; k < nb; k++ {
-				p.SetBucketCounts(k, val.Buckets(k))
+		case mr.PointKindGaugeInt:
+			p.SetIntValue(copies[0].Points(i).IntValue())
+		case mr.PointKindGaugeDouble:
+			p.SetDoubleValue(copies[0].Points(i).DoubleValue())
+		case mr.PointKindSumInt:
+			var sum int64
+			for _, v := range copies {
+				sum += v.Points(i).IntValue()
 			}
-			if mn, mx := val.Min(), val.Max(); c > 0 && !math.IsInf(mn, 0) && !math.IsInf(mx, 0) {
+			p.SetIntValue(sum)
+		case mr.PointKindSumDouble:
+			var sum float64
+			for _, v := range copies {
+				sum += v.Points(i).DoubleValue()
+			}
+			p.SetDoubleValue(sum)
+		case mr.PointKindHistogram:
+			nb := min(int(p.BucketCountsLen()), 16)
+			var c uint64
+			var sum float64
+			var buckets [16]uint64
+			mn, mx := math.Inf(1), math.Inf(-1)
+			for _, v := range copies {
+				val := v.Points(i)
+				c += val.Count()
+				sum += val.DoubleValue()
+				mn, mx = min(mn, val.Min()), max(mx, val.Max())
+				for k := 0; k < nb; k++ {
+					buckets[k] += val.Buckets(k)
+				}
+			}
+			for k := 0; k < nb; k++ {
+				p.SetBucketCounts(k, buckets[k])
+			}
+			p.SetCount(c)
+			p.SetDoubleValue(sum)
+			if c > 0 && !math.IsInf(mn, 0) && !math.IsInf(mx, 0) {
 				p.SetMin(mn)
 				p.SetMax(mx)
 			} else {

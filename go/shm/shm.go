@@ -174,6 +174,11 @@ func CreateMapping(path string, size int, stamp func([]byte)) (*Mapping, error) 
 	if err != nil {
 		return nil, err
 	}
+	if err := f.Truncate(int64(size)); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return nil, err
+	}
 	m, err := mapSized(f, size)
 	if err != nil {
 		f.Close()
@@ -189,8 +194,10 @@ func CreateMapping(path string, size int, stamp func([]byte)) (*Mapping, error) 
 	return m, nil
 }
 
-// OpenMapping maps an existing file of at least size bytes, writable (atomic loads of a
-// shared word are fine read-only, but the mapping is shared with a writer).
+// OpenMapping maps an existing file of at least size bytes — all of it, and it never
+// resizes the file (a values file holds as many region copies as its writer made) —
+// writable (atomic loads of a shared word are fine read-only, but the mapping is shared
+// with a writer).
 func OpenMapping(path string, size int) (*Mapping, error) {
 	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
@@ -201,13 +208,14 @@ func OpenMapping(path string, size int) (*Mapping, error) {
 		f.Close()
 		return nil, fmt.Errorf("%w: %s is shorter than %d bytes", ErrNotRegion, path, size)
 	}
-	return mapSized(f, size)
+	m, err := mapSized(f, int(st.Size()))
+	if err != nil {
+		f.Close()
+	}
+	return m, err
 }
 
 func mapSized(f *os.File, size int) (*Mapping, error) {
-	if err := f.Truncate(int64(size)); err != nil {
-		return nil, err
-	}
 	mem, err := syscall.Mmap(int(f.Fd()), 0, size, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		return nil, err
