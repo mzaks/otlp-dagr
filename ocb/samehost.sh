@@ -25,7 +25,7 @@ INTERVAL="${INTERVAL:-100ms}"
 DURATION="${DURATION:-20s}"
 STREAMS="${STREAMS:-500}"
 ROUNDS="${ROUNDS:-3}"
-MODES="${MODES:-none shm otlp prom}"   # none: the app's recording cost alone, no collector
+MODES="${MODES:-none direct shm otlp prom}"   # none: the app's recording cost alone, no collector
 
 # rebuild a collector older than any Go source, the manifest or the PGO profile it is built
 # from (the rule roundtrip.sh uses) — a stale binary would measure the OLD receiver
@@ -49,6 +49,19 @@ PY
 
 cpu() { ps -o time= -p "$1" | awk -F: '{ if (NF == 3) print $1*3600 + $2*60 + $3; else print $1*60 + $2 }'; }
 
+# stop <pid> <mode>: SIGINT, then SIGKILL after 10 s — the prometheus receiver has been
+# seen to hang in shutdown after its target went away, and a wait on it then never returns.
+# The collector's CPU is sampled before this, so a forced stop changes no number.
+stop() {
+  kill -INT "$1" 2>/dev/null || true
+  for _ in $(seq 1 100); do kill -0 "$1" 2>/dev/null || break; sleep 0.1; done
+  if kill -0 "$1" 2>/dev/null; then
+    echo "    ($2: the collector did not stop on SIGINT; killed)" >&2
+    kill -9 "$1" 2>/dev/null || true
+  fi
+  wait "$1" 2>/dev/null || true
+}
+
 run() {  # run <mode> <nop|file> <duration> -> "app_cpu collector_cpu"
   local mode="$1" exp="$2" dur="$3"
   if [ "$mode" = none ]; then
@@ -59,9 +72,19 @@ run() {  # run <mode> <nop|file> <duration> -> "app_cpu collector_cpu"
   rm -rf "$WORK/samehost" "$WORK/samehost-out.json"
   mkdir -p "$WORK/samehost"
   render "$ROOT/ocb/samehost-$mode.yaml" "$WORK/samehost-$mode.yaml" "$exp"
-  "$BIN" --config "$WORK/samehost-$mode.yaml" >"$WORK/samehost-$mode.log" 2>&1 &
+  # prom: Go's own resolver. Prometheus's scrape manager looks up this host's FQDN before
+  # it scrapes anything (scrape.Manager.setOffsetSeed -> osutil.GetFQDN), and a reverse
+  # DNS lookup the network does not answer blocks the system resolver for good (seen
+  # 2026-09-27); Go's resolver gives up after its timeouts (~60 s here). Wait for the
+  # scrape manager rather than guessing — the CPU window starts after it either way.
+  local dns=""
+  [ "$mode" = prom ] && dns=go
+  GODEBUG="${dns:+netdns=$dns}" "$BIN" --config "$WORK/samehost-$mode.yaml" >"$WORK/samehost-$mode.log" 2>&1 &
   local pid=$!
   trap 'kill "$pid" 2>/dev/null || true' EXIT
+  if [ "$mode" = prom ]; then
+    for _ in $(seq 1 180); do grep -q "Starting scrape manager" "$WORK/samehost-$mode.log" && break; sleep 1; done
+  fi
   # Prometheus' discovery hands targets to the scrape manager on a ~5s tick: every mode
   # waits past it, so no mode starts its window with its receiver still idle
   sleep 6
@@ -71,7 +94,7 @@ run() {  # run <mode> <nop|file> <duration> -> "app_cpu collector_cpu"
   out=$("$WORK/shmbench" -mode "$mode" -dir "$WORK/samehost" -interval "$INTERVAL" \
           -duration "$dur" -streams "$STREAMS")
   c1=$(cpu "$pid")
-  kill -INT "$pid"; wait "$pid" 2>/dev/null || true
+  stop "$pid" "$mode"
   trap - EXIT
   echo "$(sed -E 's/.*cpu=([0-9.]+)s.*/\1/' <<<"$out") $(awk -v a="$c0" -v b="$c1" 'BEGIN { printf "%.3f", b - a }')"
 }

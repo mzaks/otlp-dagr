@@ -11,6 +11,7 @@ receivers:
 exporters:
   nop:
 service:
-  telemetry: {logs: {level: warn}, metrics: {level: none}}
+  # info: samehost.sh waits for the receiver's "Starting scrape manager" line
+  telemetry: {logs: {level: info}, metrics: {level: none}}
   pipelines:
     metrics: {receivers: [prometheus], exporters: [nop]}

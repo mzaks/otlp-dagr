@@ -6,10 +6,13 @@
 package dagrshmreceiver
 
 import (
+	"math"
+
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	mr "otlpgen/metricsregion"
+	mv "otlpgen/metricsvalues"
 )
 
 // ToMetrics converts one region snapshot to pdata: one ResourceMetrics (the region's
@@ -156,5 +159,42 @@ func putAttr(dst pcommon.Map, a mr.Attr) {
 		dst.PutBool(a.Key(), a.IntValue() != 0)
 	default:
 		dst.PutStr(a.Key(), a.StringValue())
+	}
+}
+
+// OverlayValues writes a direct-instrument app's live values (package shmdirect) into a
+// descriptor snapshot, stamped now: stream i's value slot is values point i. The snapshot
+// is the receiver's private copy, so ToMetrics then converts it as it converts an
+// exporter's region. Values are read word by word — each atomically, not all at one
+// instant (spec/40 §2).
+func OverlayValues(s mr.State, v mv.Values, now uint64) {
+	n := int(s.PointsLen())
+	if m := v.PointsLen(); m < n {
+		n = m
+	}
+	for i := 0; i < n; i++ {
+		p, val := s.Points(i), v.Points(i)
+		switch p.Kind() {
+		case mr.PointKindGaugeInt, mr.PointKindSumInt:
+			p.SetIntValue(val.IntValue())
+		case mr.PointKindGaugeDouble, mr.PointKindSumDouble:
+			p.SetDoubleValue(val.DoubleValue())
+		case mr.PointKindHistogram:
+			c := val.Count()
+			p.SetCount(c)
+			p.SetDoubleValue(val.DoubleValue())
+			nb := int(p.BucketCountsLen())
+			for k := 0; k < nb; k++ {
+				p.SetBucketCounts(k, val.Buckets(k))
+			}
+			if mn, mx := val.Min(), val.Max(); c > 0 && !math.IsInf(mn, 0) && !math.IsInf(mx, 0) {
+				p.SetMin(mn)
+				p.SetMax(mx)
+			} else {
+				p.ClearMin()
+				p.ClearMax()
+			}
+		}
+		p.SetTimeUnixNano(now)
 	}
 }

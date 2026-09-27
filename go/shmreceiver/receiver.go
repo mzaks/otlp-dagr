@@ -17,8 +17,10 @@ import (
 	"go.uber.org/zap"
 
 	mr "otlpgen/metricsregion"
+	mv "otlpgen/metricsvalues"
 
 	"otlpdagr/shm"
+	"otlpdagr/shmdirect"
 )
 
 // Type is the component type as it appears in a collector config: `dagrshm`.
@@ -66,8 +68,16 @@ func createMetrics(_ context.Context, set receiver.Settings, cfg component.Confi
 
 type region struct {
 	r       *shm.Region
+	vals    *shm.Mapping // a direct-instrument app's values (shmdirect), else nil
 	ino     uint64
 	exports uint64 // the last export forwarded
+}
+
+func (reg *region) close() {
+	reg.r.Close()
+	if reg.vals != nil {
+		reg.vals.Close()
+	}
 }
 
 type shmReceiver struct {
@@ -122,11 +132,18 @@ func (r *shmReceiver) Poll(ctx context.Context) {
 			r.log.Debug("dagrshm: no snapshot", zap.String("path", p), zap.Error(err))
 			continue
 		}
-		if s.Exports() == reg.exports {
-			continue // nothing new since the last forward
-		}
-		if age := time.Since(time.Unix(0, int64(s.WriteUnixNano()))); r.cfg.StaleAfter > 0 && age > r.cfg.StaleAfter {
-			continue
+		if reg.vals != nil {
+			// direct instruments: the values change with no export, so a direct region is
+			// forwarded on every poll, as a scrape would be — and its last descriptor write
+			// is when a stream was registered, not a sign of life
+			OverlayValues(s, mv.Wrap(reg.vals.Mem), uint64(time.Now().UnixNano()))
+		} else {
+			if s.Exports() == reg.exports {
+				continue // nothing new since the last forward
+			}
+			if age := time.Since(time.Unix(0, int64(s.WriteUnixNano()))); r.cfg.StaleAfter > 0 && age > r.cfg.StaleAfter {
+				continue
+			}
 		}
 		reg.exports = s.Exports()
 		if d := s.DroppedPoints(); d > 0 {
@@ -138,7 +155,7 @@ func (r *shmReceiver) Poll(ctx context.Context) {
 	}
 	for p, reg := range r.open { // files that went away: their apps shut down
 		if !seen[p] {
-			reg.r.Close()
+			reg.close()
 			delete(r.open, p)
 		}
 	}
@@ -156,7 +173,7 @@ func (r *shmReceiver) attach(p string) (*region, error) {
 		if uint64(reg.ino) == uint64(ino) {
 			return reg, nil
 		}
-		reg.r.Close()
+		reg.close()
 		delete(r.open, p)
 	}
 	sr, err := shm.Open(p)
@@ -164,6 +181,14 @@ func (r *shmReceiver) attach(p string) (*region, error) {
 		return nil, err
 	}
 	reg := &region{r: sr, ino: uint64(ino)}
+	// a direct-instrument app writes its values next to the descriptors (shmdirect)
+	if vm, err := shm.OpenMapping(p+".values", mv.ByteSize); err == nil {
+		if v := mv.Wrap(vm.Mem); v.Magic() == shmdirect.ValuesMagic && v.Version() == shmdirect.ValuesVersion {
+			reg.vals = vm
+		} else {
+			vm.Close()
+		}
+	}
 	r.open[p] = reg
 	return reg, nil
 }
@@ -174,7 +199,7 @@ func (r *shmReceiver) Shutdown(context.Context) error {
 		r.wg.Wait()
 	}
 	for p, reg := range r.open {
-		reg.r.Close()
+		reg.close()
 		delete(r.open, p)
 	}
 	return nil

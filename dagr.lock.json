@@ -4019,6 +4019,10 @@
       {
         "kind": "sharedbuffer",
         "name": "MetricsRegion"
+      },
+      {
+        "kind": "sharedbuffer",
+        "name": "MetricsValues"
       }
     ],
     "shared_buffers": {
@@ -4799,6 +4803,255 @@
           "kind": "ref",
           "ref": "State"
         }
+      },
+      "MetricsValues": {
+        "concurrency": "atomic",
+        "layout": {
+          "byte_size": 90128,
+          "concurrency": "atomic",
+          "nodes": {
+            "Value": {
+              "align": 8,
+              "atomic": true,
+              "fields": {
+                "buckets": {
+                  "cap": 16,
+                  "kind": "scalar",
+                  "len": 168,
+                  "offset": 40,
+                  "present": null,
+                  "type": "u64",
+                  "width": 8
+                },
+                "count": {
+                  "cap": 0,
+                  "kind": "scalar",
+                  "len": null,
+                  "offset": 16,
+                  "present": null,
+                  "type": "u64",
+                  "width": 8
+                },
+                "double_value": {
+                  "cap": 0,
+                  "kind": "scalar",
+                  "len": null,
+                  "offset": 8,
+                  "present": null,
+                  "type": "f64",
+                  "width": 8
+                },
+                "int_value": {
+                  "cap": 0,
+                  "kind": "scalar",
+                  "len": null,
+                  "offset": 0,
+                  "present": null,
+                  "type": "i64",
+                  "width": 8
+                },
+                "max": {
+                  "cap": 0,
+                  "kind": "scalar",
+                  "len": null,
+                  "offset": 32,
+                  "present": null,
+                  "type": "f64",
+                  "width": 8
+                },
+                "min": {
+                  "cap": 0,
+                  "kind": "scalar",
+                  "len": null,
+                  "offset": 24,
+                  "present": null,
+                  "type": "f64",
+                  "width": 8
+                }
+              },
+              "size": 176
+            },
+            "Values": {
+              "align": 8,
+              "atomic": true,
+              "fields": {
+                "magic": {
+                  "cap": 0,
+                  "kind": "scalar",
+                  "len": null,
+                  "offset": 90112,
+                  "present": null,
+                  "type": "u32",
+                  "width": 4
+                },
+                "points": {
+                  "cap": 512,
+                  "kind": "node",
+                  "len": 90120,
+                  "offset": 0,
+                  "present": null,
+                  "type": "Value",
+                  "width": 176
+                },
+                "version": {
+                  "cap": 0,
+                  "kind": "scalar",
+                  "len": null,
+                  "offset": 90116,
+                  "present": null,
+                  "type": "u32",
+                  "width": 4
+                }
+              },
+              "size": 90128
+            }
+          },
+          "region_align": 8,
+          "root": "Values",
+          "root_offset": 0,
+          "unions": {}
+        },
+        "name": "MetricsValues",
+        "node_types": [
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "int_value",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "i64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "double_value",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "count",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "min",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "max",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "f64"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": 16,
+                "default": null,
+                "index": null,
+                "name": "buckets",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "u64"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": true,
+            "kind": "node",
+            "name": "Value",
+            "packed": false,
+            "prefabs": {}
+          },
+          {
+            "fields": [
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "magic",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": null,
+                "default": null,
+                "index": null,
+                "name": "version",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "kind": "u32"
+                }
+              },
+              {
+                "alignment": null,
+                "capacity": 512,
+                "default": null,
+                "index": null,
+                "name": "points",
+                "options": 1,
+                "timestamp": null,
+                "type": {
+                  "inner": {
+                    "kind": "ref",
+                    "ref": "Value"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "frozen": true,
+            "kind": "node",
+            "name": "Values",
+            "packed": false,
+            "prefabs": {}
+          }
+        ],
+        "ring_capacity": null,
+        "root_type": {
+          "kind": "ref",
+          "ref": "Values"
+        }
       }
     },
     "sinks": {
@@ -5414,14 +5667,16 @@
     },
     "wire_format_version": 1
   },
-  "library_hash": "sha256:558414d0e7db187dcb66726c94502fd4a3047378d8315a8515523b75a07c44fb",
+  "library_hash": "sha256:4aeeb3620c881efd2ecc855352062ccf5b47e82723322ba50e7d649abc434ab3",
   "outputs": {
+    "go/gen/dagr/owner.go": "sha256:f8f0332e779d87407fa596c72e02cc3dbf24aebe886ab8f8ea3e30b02548bd24",
     "go/gen/dagr/reader.go": "sha256:52241688c1535ab8ea98b014aebebe26e8a3baab174840afe07ea0d4e0231363",
     "go/gen/dagr/writer.go": "sha256:7eee25743b708004edf672cc9bff8cf14ed057a98d357f45badee2c122d94216",
     "go/gen/go.mod": "sha256:a31961fab517fcdc05aefcf74884d3f0c15eef029955a4e8c25b7a967a3509e9",
     "go/gen/logrecordlog/log_record_log.go": "sha256:e67b250b2119825742ca13bfafa54ae22203d92abc1108578bf0c7d27013a694",
     "go/gen/metriclog/metric_log.go": "sha256:d822ce872de066e8fa6325fee446a158c04491abf98daaa2db86c1f1aea2bc3e",
     "go/gen/metricsregion/metrics_region.go": "sha256:a641ffd7016935b784388eba1ca995a110abd6e4df5e05ce140769b971b9254c",
+    "go/gen/metricsvalues/metrics_values.go": "sha256:8b0eb5e5d52513a74b24f121dd3d95dd7bccf309ee3d36b1168bd1638b4fd8c4",
     "go/gen/otlpcommon/otlp_common.go": "sha256:d344f08fb25164e6156d889f61bffc2276aa91a75381e064664e960fc5a6da94",
     "go/gen/otlpcommondirect/otlp_common.go": "sha256:ef85449d80fd9577a07c8ec624f01b5c600306f8438e3bf49cfa5343170ffde4",
     "go/gen/otlplogs/otlp_logs.go": "sha256:afd109e7a9ba49631adf6394c1f4062d7d5c8702c2e4398d71748a991f4e909e",
@@ -5448,10 +5703,11 @@
     "rust/gen/Cargo.toml": "sha256:c01c54ed4c18b431815af8668b155f35e7d41084aa7f97aff7ce01dfbcb7f9b3",
     "rust/gen/build.rs": "sha256:ef0170542199cbb707b78fb06eac8978eceb6bf64e710aabd54943134da4a62c",
     "rust/gen/src/dagr_runtime.rs": "sha256:b17624a505d75ab4d8a4f5db96ec76d0d2c3ae0120e1a7a9b500b188f3a25b54",
-    "rust/gen/src/lib.rs": "sha256:aa390cd75967336052298854ef45cdb20d0f90578cfb4d80329dc996e13015cf",
+    "rust/gen/src/lib.rs": "sha256:f9a128202a1d9445763221b374f903fcda1460308aa95ffcd8cba50ee121bf4f",
     "rust/gen/src/log_record_log_sink.rs": "sha256:7af4d62ca1a7acf8aa8b7b71800c3d2c21dc1619fa66b777b43ac7ff73d19ddf",
     "rust/gen/src/metric_log_sink.rs": "sha256:b7b3d37efe4374c446108119b761fee30a9be2d9d19d42aff87c1a7133d6a3f8",
     "rust/gen/src/metrics_region_shared_buffer.rs": "sha256:ed3abb2af5499a688069b1d3b7621996e565f754b8f9f12572cebc415e256788",
+    "rust/gen/src/metrics_values_shared_buffer.rs": "sha256:3e1b074997d0bd2d722e60ed23e73677a51da2ddd38554836e4fda0a1763b3e3",
     "rust/gen/src/otlp_logs.rs": "sha256:a76890fe32b194f0e9143aa2ec1de8357790891dbc64d7aaee76f24166c5bbb8",
     "rust/gen/src/otlp_logs_arrow.rs": "sha256:e06201e12ef72b697b88eff1192c423272950f03b8606f1a8f445335b1121638",
     "rust/gen/src/otlp_logs_core.rs": "sha256:6984e96ef9fb383da67accc38e0c6489bd6d3aefb7be95b7b0543a187779692c",
@@ -5476,7 +5732,7 @@
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-26T16:40:30.685667+00:00",
+    "generated_at": "2026-09-27T12:43:37.527061+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.2"
   },

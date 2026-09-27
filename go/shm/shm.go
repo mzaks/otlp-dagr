@@ -112,7 +112,7 @@ func (r *Region) File() *os.File { return r.f }
 // BeginWrite / EndWrite bracket one publication. There must be one writer: the
 // application's exporter serialises its exports.
 func (r *Region) BeginWrite() mr.State { return r.lock.BeginWrite() }
-func (r *Region) EndWrite()             { r.lock.EndWrite() }
+func (r *Region) EndWrite()            { r.lock.EndWrite() }
 
 // Snapshot copies a consistent region into dst (at least mr.ByteSize bytes) and checks
 // that it is a metrics region of this version. It gives up after attempts tries.
@@ -157,4 +157,78 @@ func finalName(tmp string) string {
 		return filepath.Join(dir, base[1:len(base)-4])
 	}
 	return tmp
+}
+
+// Mapping is a file mapped MAP_SHARED at a fixed size — the values region of direct
+// instruments (package shmdirect) lives in one next to its descriptor region.
+type Mapping struct {
+	f   *os.File
+	Mem []byte
+}
+
+// CreateMapping makes (or replaces) a zeroed file of size bytes at path, lets stamp write
+// its header, and only then renames it into place.
+func CreateMapping(path string, size int, stamp func([]byte)) (*Mapping, error) {
+	tmp := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".tmp")
+	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	m, err := mapSized(f, size)
+	if err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return nil, err
+	}
+	stamp(m.Mem)
+	if err := os.Rename(tmp, path); err != nil {
+		m.Close()
+		os.Remove(tmp)
+		return nil, err
+	}
+	return m, nil
+}
+
+// OpenMapping maps an existing file of at least size bytes, writable (atomic loads of a
+// shared word are fine read-only, but the mapping is shared with a writer).
+func OpenMapping(path string, size int) (*Mapping, error) {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return nil, err
+	}
+	st, err := f.Stat()
+	if err != nil || st.Size() < int64(size) {
+		f.Close()
+		return nil, fmt.Errorf("%w: %s is shorter than %d bytes", ErrNotRegion, path, size)
+	}
+	return mapSized(f, size)
+}
+
+func mapSized(f *os.File, size int) (*Mapping, error) {
+	if err := f.Truncate(int64(size)); err != nil {
+		return nil, err
+	}
+	mem, err := syscall.Mmap(int(f.Fd()), 0, size, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	if err != nil {
+		return nil, err
+	}
+	return &Mapping{f: f, Mem: mem}, nil
+}
+
+// Close unmaps and closes; Remove also deletes the file (a writer's shutdown).
+func (m *Mapping) Close() error {
+	err := syscall.Munmap(m.Mem)
+	if cerr := m.f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+func (m *Mapping) Remove() error {
+	name := finalName(m.f.Name())
+	err := m.Close()
+	if rerr := os.Remove(name); err == nil && !os.IsNotExist(rerr) {
+		err = rerr
+	}
+	return err
 }

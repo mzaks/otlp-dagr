@@ -1,0 +1,11 @@
+# ocb/samehost.sh, mode direct: shmdirect's descriptor + atomic values regions, read in place.
+receivers:
+  dagrshm:
+    directory: ${WORK}/samehost
+    interval: ${INTERVAL}
+exporters:
+  nop:
+service:
+  telemetry: {logs: {level: warn}, metrics: {level: none}}
+  pipelines:
+    metrics: {receivers: [dagrshm], exporters: [nop]}

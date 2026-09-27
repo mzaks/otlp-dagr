@@ -25,7 +25,9 @@
 - `shm/`, `shmexporter/`, `shmreceiver/` — the same-host metrics hop (Dagr spec/38 §7.1):
   the `MetricsRegion` SharedBuffer in a file both processes map (`gen/metricsregion`), an
   OTel Go SDK exporter that publishes each export as one seqlock write, and the
-  `dagrshm` collector receiver that polls a directory of regions. `cmd/shmdemo` and
+  `dagrshm` collector receiver that polls a directory of regions. `shmdirect/` is the
+  SDK-free path: bound instruments that update an atomic `MetricsValues` region in place
+  (Dagr spec/40 §2), read by the same receiver. `cmd/shmdemo` and
   `cmd/shmbench` are the apps `../ocb/roundtrip.sh` (phase C) and `../ocb/samehost.sh` run.
 - `commonbridge/` — the shared-message conversions (attributes, `AnyValue`, `Resource`,
   `InstrumentationScope`) and the encode/decode helpers all four bridges use, written

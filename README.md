@@ -29,6 +29,7 @@ go/                see go/README.md
   shm/             the same-host metrics region: a shared-memory file under a seqlock
   shmexporter/     an OTel Go SDK exporter that publishes into the region
   shmreceiver/     dagrshmreceiver — reads the regions in a directory
+  shmdirect/       direct instruments: atomic adds into a values region, no SDK
   cmd/otlpdagrctl/ the round-trip harness (send / spool / verify / shmcheck)
   cmd/shmdemo/     an SDK app exporting into a region (round trip, phase C)
   cmd/shmbench/    the same load over shm / OTLP/gRPC / Prometheus (samehost.sh)
@@ -701,6 +702,26 @@ region itself is cheap — `shmexporter.Export` is 30 µs with no allocations, t
 snapshot 10 µs — while both ends pay what every path pays: the SDK's own collection
 (354 µs a batch) and the pdata a receiver must build (96 µs; OTLP's decode of the same
 batch is 103 µs). `go test ./shmreceiver -bench .` has the pieces.
+
+**Direct instruments go further** (`go/shmdirect`): skip the SDK altogether. An app
+registers each stream once — its descriptor goes into the same kind of region — and
+updates its slot in a second, `concurrency="atomic"` region (`MetricsValues`): a
+counter's `Add` is ONE atomic add into shared memory, 1.77 ns with no allocation against
+the SDK's 97 ns (a histogram `Record` 5.9 ns against ~112). Instruments are bound (the
+attribute set fixed at registration), and this is not the OTel metric API. The `dagrshm`
+receiver reads both regions and forwards a direct app on every poll, like a scrape. Same
+load as the table above:
+
+| | app CPU | collector CPU | total |
+|---|---|---|---|
+| **direct instruments** | 0.013 s | 0.088 s | **0.101 s** |
+| SDK exporter → shared memory | 0.223 s | 0.076 s | 0.299 s |
+| SDK → OTLP/gRPC | 0.368 s | 0.106 s | 0.474 s |
+| SDK → Prometheus | 1.202 s | 1.162 s | 2.364 s |
+
+3.0x less CPU than the SDK into the same region, 4.7x less than OTLP/gRPC, 23x less
+than Prometheus; the app spends less than the SDK spends on recording alone (0.028 s).
+What is left is the collector building pdata. `spec/38` §7.1 has the details.
 
 Delivery waits for the receiver's poll, values are cumulative only, and one process
 writes a region. The two Kubernetes shapes are the same component: a sidecar shares an

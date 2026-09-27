@@ -828,12 +828,48 @@ MetricsRegion = SharedBuffer(
 )
 
 
+# ── Direct instruments: the values half, updated in place (Dagr spec/40 §2) ─────────────
+#
+# The SDK path above pays the SDK's collect pass on every export. Direct instruments skip
+# it: an app registers each stream ONCE — its descriptor (name, unit, kind, attributes,
+# bucket bounds) goes into a MetricsRegion — and then updates that stream's slot HERE with
+# atomic operations: `counter.Add` is one atomic add into shared memory. The collector's
+# `dagrshm` receiver reads the descriptors under their seqlock and these values word by
+# word (spec/40 §2.3's two-region pattern: an atomic region holds no strings).
+#
+# Slot i belongs to the descriptor region's point i. Histograms: `double_value` is the sum,
+# `buckets[k]` counts values in (bounds[k-1], bounds[k]], `min` / `max` start at +Inf /
+# -Inf when the stream is registered. No multi-field snapshot: a reader may see a
+# histogram's count and sum a few records apart (as Prometheus clients do).
+MetricsValuesMagic = 0x564D4744    # "DGMV" little-endian
+MetricsValuesVersion = 1
+
+MetricsValues = SharedBuffer(
+    'MetricsValues', root_type='Values', concurrency='atomic',
+    node_types=[
+        Node('Value', frozen=True, fields=[
+            'int_value' >> t.i64 >> required,
+            'double_value' >> t.f64 >> required,
+            'count' >> t.u64 >> required,
+            'min' >> t.f64 >> required,
+            'max' >> t.f64 >> required,
+            'buckets' >> t.u64.array >> cap(16) >> required,
+        ]),
+        Node('Values', frozen=True, fields=[
+            'magic' >> t.u32 >> required,
+            'version' >> t.u32 >> required,
+            'points' >> t.ref('Value').array >> cap(512) >> required,
+        ]),
+    ],
+)
+
+
 library = Library(
     'otlp_dagr',
     # OtlpCommon is NOT listed: it has no root and is never serialized on its own — each
     # signal reaches it through its import.
     schemas=[OtlpTraces, OtlpMetrics, OtlpLogs, OtlpProfiles, OtlpProfilesGraph,
-             SpanLog, MetricLog, LogRecordLog, ProfileLog, MetricsRegion],
+             SpanLog, MetricLog, LogRecordLog, ProfileLog, MetricsRegion, MetricsValues],
     targets=[
         # The Go emitter always writes the lazy accessors, the arena, the serializer
         # and the direct builder (spec/37 §16) — there is no feature list to opt into.

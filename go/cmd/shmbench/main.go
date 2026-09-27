@@ -7,6 +7,8 @@
 //	-mode otlp   otlpmetricgrpc: each export is an OTLP/gRPC request to localhost
 //	-mode prom   the Prometheus exporter: the collector scrapes /metrics over HTTP
 //	-mode none   no export at all — the recording cost every mode pays, to subtract
+//	-mode direct no SDK: shmdirect's bound instruments, each recording an atomic
+//	             operation in shared memory, read by the same dagrshm receiver
 //
 // The load is identical in every mode — -streams metric streams (40% counters, 20%
 // gauges, 40% histograms over 10 attribute sets each), every stream recorded once per
@@ -34,6 +36,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 
+	"otlpdagr/shmdirect"
 	"otlpdagr/shmexporter"
 )
 
@@ -47,6 +50,10 @@ func main() {
 	streams := flag.Int("streams", 500, "metric streams (a multiple of 10)")
 	flag.Parse()
 	ctx := context.Background()
+	if *mode == "direct" {
+		runDirect(filepath.Join(*dir, "shmbench.dagrshm"), *interval, *duration, *streams)
+		return
+	}
 
 	res := resource.NewSchemaless(attribute.String("service.name", "shmbench-"+*mode))
 	var reader sdkmetric.Reader
@@ -143,4 +150,67 @@ func main() {
 func fail(err error) {
 	fmt.Fprintln(os.Stderr, "shmbench:", err)
 	os.Exit(1)
+}
+
+// runDirect is the same load as the SDK modes — the same streams, each recorded once per
+// interval with the same values — through shmdirect's bound instruments: no SDK, no
+// collect, no export; the collector reads the values region at its own cadence.
+func runDirect(path string, interval, duration time.Duration, streams int) {
+	p, err := shmdirect.NewProvider(path, "shmbench-direct")
+	if err != nil {
+		fail(err)
+	}
+	per := streams / 10
+	nCounter, nGauge := per*4/10, per*2/10
+	nHist := per - nCounter - nGauge
+	set := func(s int) []shmdirect.Attr {
+		return []shmdirect.Attr{{Key: "route", Value: fmt.Sprintf("/api/v1/r%d", s)}, {Key: "code", Value: 200 + s}}
+	}
+	const scope = "otlp-dagr/shmbench"
+	counters := make([][10]*shmdirect.Int64Counter, nCounter)
+	gauges := make([][10]*shmdirect.Float64Gauge, nGauge)
+	hists := make([][10]*shmdirect.Float64Histogram, nHist)
+	for s := 0; s < 10; s++ {
+		for i := range counters {
+			if counters[i][s], err = p.Int64Counter(scope, fmt.Sprintf("bench.counter.%d", i), "{op}", set(s)...); err != nil {
+				fail(err)
+			}
+		}
+		for i := range gauges {
+			if gauges[i][s], err = p.Float64Gauge(scope, fmt.Sprintf("bench.gauge.%d", i), "1", set(s)...); err != nil {
+				fail(err)
+			}
+		}
+		for i := range hists {
+			if hists[i][s], err = p.Float64Histogram(scope, fmt.Sprintf("bench.latency.%d", i), "ms", nil, set(s)...); err != nil {
+				fail(err)
+			}
+		}
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	end := time.Now().Add(duration)
+	for k := 0; time.Now().Before(end); k++ {
+		for i := range counters {
+			for s := 0; s < 10; s++ {
+				counters[i][s].Add(int64(1 + (i+s+k)%7))
+			}
+		}
+		for i := range gauges {
+			for s := 0; s < 10; s++ {
+				gauges[i][s].Record(float64((i*s + k) % 100))
+			}
+		}
+		for i := range hists {
+			for s := 0; s < 10; s++ {
+				hists[i][s].Record(float64((i + s*37 + k*13) % 2000))
+			}
+		}
+		<-t.C
+	}
+	p.Shutdown()
+	var ru syscall.Rusage
+	syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
+	fmt.Printf("shmbench mode=direct streams=%d interval=%s duration=%s cpu=%.3fs\n",
+		streams, interval, duration, time.Duration(ru.Utime.Nano()+ru.Stime.Nano()).Seconds())
 }
