@@ -10,12 +10,14 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/pprofile"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"otlpdagr/internal/fixture"
 	"otlpdagr/logbridge"
 	"otlpdagr/metricbridge"
 	"otlpdagr/pdatabridge"
+	"otlpdagr/profilebridge"
 	"otlpdagr/spool"
 	"otlpgen/logrecordlog"
 	"otlpgen/metriclog"
@@ -91,6 +93,12 @@ func fixtures(args []string) error {
 		if err := write("metrics-"+name, metricbridge.ToBytes(md), pb, err); err != nil {
 			return err
 		}
+	}
+	// profiles: the benchmark's batch only (no OTAP mapping exists, so check.sh skips it;
+	// rust/restore-bench reads it). ProtoMarshaler MUTATES its input: build it twice.
+	pb, err := (&pprofile.ProtoMarshaler{}).MarshalProfiles(fixture.ProfilesBatch(2000, 400, 200))
+	if err := write("profiles-batch", profilebridge.ToBytes(fixture.ProfilesBatch(2000, 400, 200)), pb, err); err != nil {
+		return err
 	}
 	// the same stream batches as a real SPOOL (the exporter's file, go/spool): one record
 	// each, in order — the bridge's spool input must give back the stream-NN fixtures

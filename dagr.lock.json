@@ -5723,7 +5723,7 @@
     "go/gen/spanlog/span_log.go": "sha256:0a1bda0c30ee8f3a8d3a89bae6ea3cdf826cb56780454e49f505c1f0a67ecd69",
     "rust/gen/Cargo.toml": "sha256:c01c54ed4c18b431815af8668b155f35e7d41084aa7f97aff7ce01dfbcb7f9b3",
     "rust/gen/build.rs": "sha256:ef0170542199cbb707b78fb06eac8978eceb6bf64e710aabd54943134da4a62c",
-    "rust/gen/src/dagr_runtime.rs": "sha256:b17624a505d75ab4d8a4f5db96ec76d0d2c3ae0120e1a7a9b500b188f3a25b54",
+    "rust/gen/src/dagr_runtime.rs": "sha256:dbb06f414d7cb068b7704f0dbd29d9ffe3ffc9a1d04ea5be9e21133b49de08e5",
     "rust/gen/src/lib.rs": "sha256:f9a128202a1d9445763221b374f903fcda1460308aa95ffcd8cba50ee121bf4f",
     "rust/gen/src/log_record_log_sink.rs": "sha256:7af4d62ca1a7acf8aa8b7b71800c3d2c21dc1619fa66b777b43ac7ff73d19ddf",
     "rust/gen/src/metric_log_sink.rs": "sha256:b7b3d37efe4374c446108119b761fee30a9be2d9d19d42aff87c1a7133d6a3f8",
@@ -5753,7 +5753,7 @@
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-09-27T16:24:24.548020+00:00",
+    "generated_at": "2026-09-27T16:58:30.906127+00:00",
     "host": null,
     "tool_version": "dagr 2026.9.2"
   },

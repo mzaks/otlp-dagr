@@ -1,0 +1,15 @@
+[package]
+name = "otlp_dagr_restore_bench"
+version = "0.1.0"
+edition = "2024"
+description = "Eager restore of a Dagr batch (the generated arena's from_bytes) against prost's decode of the same batch — spec/38 §0.1"
+
+[dependencies]
+otlp_dagr = { path = "../gen" }
+prost = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+
+[profile.release]
+debug = 1

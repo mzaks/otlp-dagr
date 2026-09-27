@@ -35,6 +35,8 @@ go/                see go/README.md
   cmd/shmbench/    the same load over shm / OTLP/gRPC / Prometheus (samehost.sh)
 ocb/               collector builder manifest, pipeline configs, roundtrip.sh,
                    samehost.sh, default.pgo (the collector's PGO profile)
+rust/otap/         Dagr -> OTAP (OpenTelemetry Arrow), gated by otel-arrow's decoders
+rust/restore-bench/ eager restore (the generated arena) vs prost's decode, same batches
 ```
 
 ```bash
@@ -43,6 +45,8 @@ cd go && go test ./...                                # every gate
 cd go && go test ./bench -bench . -benchmem -benchtime 500x
 cd go && go test ./store -bench . -benchtime 2s        # the store's numbers
 ./ocb/roundtrip.sh                                    # build a collector, round trip through it
+(cd go && go run ./cmd/otlpdagrctl fixtures -out ../rust/otap/work) && \
+  (cd rust/restore-bench && cargo run --release)      # eager restore vs protobuf, every signal
 ./ocb/roundtrip.sh profile                            # re-record ocb/default.pgo under load, rebuild
 ./ocb/samehost.sh                                     # shared memory vs OTLP/gRPC vs Prometheus
 ```
@@ -388,7 +392,10 @@ comparable is not a fixture that covers either one.
 ### The receiver is the slow path, on purpose
 
 `dagrfilereceiver` materialises every batch into pdata, and `spec/38 §0.1` measures eager
-restore at ~1.6× slower than a protobuf unmarshal. It exists so an **unmodified** pipeline
+restore at 1.4–1.6× slower than a protobuf unmarshal on every signal
+(`rust/restore-bench`: the generated Rust arena's `from_bytes` against prost's `decode` of
+the same batch — traces 1.50×, logs 1.41×, metrics 1.64×, profiles 1.46×). It exists so an
+**unmodified** pipeline
 can consume a spool, and for nothing else. Do not benchmark otlp-dagr through it.
 
 The fast path is the opposite shape — keep the buffer, read the fields you need in place,
