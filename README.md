@@ -394,7 +394,7 @@ comparable is not a fixture that covers either one.
 `dagrfilereceiver` materialises every batch into pdata, and `spec/38 §0.1` measures eager
 restore at 1.4–1.6× slower than a protobuf unmarshal on every signal
 (`rust/restore-bench`: the generated Rust arena's `from_bytes` against prost's `decode` of
-the same batch — traces 1.50×, logs 1.41×, metrics 1.64×, profiles 1.46×). It exists so an
+the same batch — traces 1.45×, logs 1.39×, metrics 1.61×, profiles 1.42×). It exists so an
 **unmodified** pipeline
 can consume a spool, and for nothing else. Do not benchmark otlp-dagr through it.
 
