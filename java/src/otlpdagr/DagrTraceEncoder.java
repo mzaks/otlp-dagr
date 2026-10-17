@@ -189,7 +189,7 @@ public final class DagrTraceEncoder {
     return out;
   }
 
-  private static OtlpTraces.Link link(LinkData l) {
+  static OtlpTraces.Link link(LinkData l) {
     OtlpTraces.Link out = new OtlpTraces.Link();
     SpanContext ctx = l.getSpanContext();
     if (ctx.isValid()) {
@@ -222,7 +222,7 @@ public final class DagrTraceEncoder {
     return out;
   }
 
-  private static OtlpTraces.AnyValue anyValue(AttributeKey<?> k, Object v) {
+  static OtlpTraces.AnyValue anyValue(AttributeKey<?> k, Object v) {
     return switch (k.getType()) {
       case STRING -> new OtlpTraces.AnyValue.StringValue((String) v);
       case BOOLEAN -> new OtlpTraces.AnyValue.BoolValue((Boolean) v);
@@ -246,7 +246,7 @@ public final class DagrTraceEncoder {
     };
   }
 
-  private static String traceState(TraceState ts) {
+  static String traceState(TraceState ts) {
     if (ts.isEmpty()) return null;
     StringBuilder sb = new StringBuilder();
     ts.forEach((k, v) -> {

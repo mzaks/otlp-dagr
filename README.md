@@ -793,15 +793,18 @@ Each call encodes the next of 16 copies of the batch, with fresh values and shar
 |---|---|---|
 | opentelemetry-java, default (`IMMUTABLE_DATA`) | 217.0 | 585 KB |
 | opentelemetry-java, low allocation (`REUSABLE_DATA`) | 562.3 | 48 KB |
-| **Dagr** (spans → value tree → buffer) | **212.9** | 467 KB |
+| Dagr (spans → value tree → buffer) | 212.9 | 467 KB |
+| **Dagr, one pass** (spans → buffer) | **211.9** | **25 B** |
 | Dagr serializer alone | **158.3** | **0** |
 | protobuf-java `writeTo` alone | 207.3 | 323 KB |
 
 A Java exporter can send Dagr at no cost over OTLP, and not much less. The serializer is
 1.31× protobuf-java's: Dagr's Java runtime caches the UTF-8 measure of short strings it has
 seen, and the attribute keys are the same instances every time (Dagr `spec/45` §5.2.1). Before
-that cache, the serializer cost 210 µs. Building the value tree from `SpanData` is now the
-bigger cost. The case for Dagr in Java is still the receiver's lazy reads, as it is
+that cache, the serializer cost 210 µs. The one-pass encoder (`DagrTraceStreamEncoder`)
+writes `SpanData` straight into the buffer, the Java twin of `go/pdatabridge.StreamBuilder`.
+It allocates nothing per export, at the same speed as the value-tree path. Inside a
+benchmark the tree's allocations are nearly free; in an application they are GC work. The case for Dagr in Java is still the receiver's lazy reads, as it is
 everywhere else here. `spec/38` §10.3.2.
 
 ## OTAP: Dagr into OpenTelemetry Arrow

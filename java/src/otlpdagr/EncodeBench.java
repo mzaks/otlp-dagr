@@ -40,6 +40,8 @@ import otlpgen.OtlpTraces;
  *       across exports;
  *   <li>{@code dagr} — the Dagr exporter: the direct builder's value tree from the spans, then
  *       the buffer;
+ *   <li>{@code dagrOnePass} — the Dagr exporter in one pass: each node written into the builder
+ *       as the spans are walked, no value tree ({@link DagrTraceStreamEncoder});
  *   <li>{@code dagrBuildOnly} / {@code protobufJavaBuildOnly} — the serializers alone, from a
  *       value tree / protobuf message built in setup: what each format's writer costs once
  *       the data is in its own model.
@@ -58,6 +60,7 @@ public class EncodeBench {
   ByteArrayOutputStream bos;
   LowAllocationTraceRequestMarshaler low;
   DagrTraceEncoder dagr;
+  DagrTraceStreamEncoder dagrOnePass;
   TracesData message;
   byte[] pbBuf;
 
@@ -80,6 +83,7 @@ public class EncodeBench {
     bos = new ByteArrayOutputStream(1 << 19);
     low = new LowAllocationTraceRequestMarshaler();
     dagr = new DagrTraceEncoder();
+    dagrOnePass = new DagrTraceStreamEncoder();
     TraceRequestMarshaler.create(batches[0]).writeBinaryTo(bos);
     message = TracesData.parseFrom(bos.toByteArray());   // what the SDK path produces
     pbBuf = new byte[message.getSerializedSize()];
@@ -107,6 +111,11 @@ public class EncodeBench {
   @Benchmark
   public long dagr() {
     return dagr.encode(batches[turn()]).byteSize();
+  }
+
+  @Benchmark
+  public long dagrOnePass() {
+    return dagrOnePass.encode(batches[turn()]).byteSize();
   }
 
   @Benchmark

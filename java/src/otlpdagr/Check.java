@@ -36,8 +36,9 @@ import otlpgen.OtlpTraces;
  *   <li>restore → build reproduces the Dagr buffer.
  * </ol>
  *
- * Writes the Dagr buffer for the Go gate (`go/pdatabridge/java_test.go`: Go's writer must
- * re-encode it to the same bytes) and prints the sizes.
+ * Writes the Dagr buffers of the batch and of the wide batch for the Go gate
+ * (`go/pdatabridge/java_test.go`: Go's writers must re-encode them to the same bytes) and prints
+ * the sizes.
  *
  * <pre>java otlpdagr.Check traces-batch.pb out.dagr</pre>
  */
@@ -76,9 +77,71 @@ public final class Check {
     // 3. restore → build is the identity
     same("Dagr restore → build", new DagrTraceEncoder().build(back).toArray(ValueLayout.JAVA_BYTE), dagr);
 
+    // 4. the one-pass encoder == the value tree: on the batch, on one that reaches every branch,
+    //    on one span and on none — through ONE reused encoder, so reuse is gated too
+    DagrTraceStreamEncoder one = new DagrTraceStreamEncoder();
+    same("one pass", one.encode(spans).toArray(ValueLayout.JAVA_BYTE), dagr);
+    List<SpanData> wide = Wide.spans();
+    for (var c : List.of(java.util.Map.entry("wide", wide), java.util.Map.entry("one span", spans.subList(0, 1)),
+        java.util.Map.entry("no span", List.<SpanData>of()), java.util.Map.entry("batch again", spans))) {
+      byte[] tree = new DagrTraceEncoder().encode(c.getValue()).toArray(ValueLayout.JAVA_BYTE);
+      same("one pass (" + c.getKey() + ")", one.encode(c.getValue()).toArray(ValueLayout.JAVA_BYTE), tree);
+    }
+
+    // 5. on the wide batch too, the Dagr buffer carries what opentelemetry-java's protobuf does —
+    //    span by span, each with its resource and scope. Not byte for byte: opentelemetry-java
+    //    groups by resource / scope IDENTITY (an IdentityHashMap — two equal resources stay two,
+    //    in hash order); the Dagr encoders group EQUAL ones, in first-seen order.
+    out.reset();
+    TraceRequestMarshaler.create(wide).writeBinaryTo(out);
+    byte[] wideDagr = new DagrTraceEncoder().encode(wide).toArray(ValueLayout.JAVA_BYTE);
+    List<String> got = flat(proto(OtlpTraces.restoreValues(MemorySegment.ofArray(wideDagr))));
+    List<String> exp = flat(TracesData.parseFrom(out.toByteArray()));
+    if (got.size() != wide.size() || !got.equals(exp)) {
+      throw new AssertionError("wide: Dagr → protobuf carries other spans than opentelemetry-java's ("
+          + got.size() + " vs " + exp.size() + ")");
+    }
+
     Files.write(Path.of(args[1]), dagr);
+    Files.write(Path.of(args[1].replace(".dagr", ".wide.dagr")), wideDagr);
     System.out.printf("ok: %d spans; OTLP protobuf %d B, Dagr %d B (%.2fx)%n", spans.size(), pb.length,
         dagr.length, (double) dagr.length / pb.length);
+  }
+
+  /**
+   * Every span of `td` as (resource, scope, span) protobuf bytes, sorted: the content without its
+   * grouping. Two proto3 equivalences are normalized, because the two writers spell them
+   * differently and both encoders here follow Go's bridge: an EMPTY status message is an absent
+   * one (opentelemetry-java writes `status {}` for an unset, undescribed span), and an ALL-ZERO
+   * id is an absent one (OTLP: an all-zero trace / span id is invalid; opentelemetry-java writes
+   * the zeros of an invalid span context).
+   */
+  private static List<String> flat(TracesData td) {
+    java.util.HexFormat hex = java.util.HexFormat.of();
+    List<String> out = new java.util.ArrayList<>();
+    for (ResourceSpans rs : td.getResourceSpansList()) {
+      String r = hex.formatHex(rs.getResource().toByteArray()) + "/" + rs.getSchemaUrl();
+      for (ScopeSpans ss : rs.getScopeSpansList()) {
+        String sc = hex.formatHex(ss.getScope().toByteArray()) + "/" + ss.getSchemaUrl();
+        for (Span sp : ss.getSpansList()) out.add(r + "|" + sc + "|" + hex.formatHex(normalized(sp).toByteArray()));
+      }
+    }
+    java.util.Collections.sort(out);
+    return out;
+  }
+
+  private static Span normalized(Span sp) {
+    Span.Builder b = sp.toBuilder();
+    if (b.getStatus().equals(Status.getDefaultInstance())) b.clearStatus();
+    if (zero(b.getTraceId())) b.clearTraceId();
+    if (zero(b.getSpanId())) b.clearSpanId();
+    if (zero(b.getParentSpanId())) b.clearParentSpanId();
+    return b.build();
+  }
+
+  private static boolean zero(ByteString id) {
+    for (int i = 0; i < id.size(); i++) if (id.byteAt(i) != 0) return false;
+    return true;
   }
 
   private static void same(String what, byte[] got, byte[] want) {
