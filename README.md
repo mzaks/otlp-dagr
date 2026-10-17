@@ -20,7 +20,7 @@ buffer is the file rather than the heap.
 schema.py          the source of truth — transpiled from proto/otlp/, then hand-owned
 dagr.lock.json     the generation receipt (committed; `./regen.sh check` diffs it)
 proto/otlp/        vendored opentelemetry-proto (Apache-2.0, see PROVENANCE.txt)
-regen.sh           dagr build + gofmt/vet + the Rust and C++ builds
+regen.sh           dagr build + gofmt/vet + the Rust, C++ and Java builds
 go/                see go/README.md
   spool/           the spool file: append, read forward/newest-first, check the tail
   exporter/        dagrfileexporter — pdata in, one Dagr record per batch
@@ -37,6 +37,8 @@ ocb/               collector builder manifest, pipeline configs, roundtrip.sh,
                    samehost.sh, default.pgo (the collector's PGO profile)
 cpp/shmdirect/     direct instruments from C++ into the same regions (check.sh: the Go
                    receiver reads a C++ process)
+java/              OTel Java SDK spans -> Dagr, against opentelemetry-java's marshalers
+                   (run.sh: gates + JMH)
 rust/otap/         Dagr -> OTAP (OpenTelemetry Arrow), gated by otel-arrow's decoders
 rust/restore-bench/ eager restore (the generated arena) vs prost's decode, same batches
 ```
@@ -52,6 +54,7 @@ cd go && go test ./store -bench . -benchtime 2s        # the store's numbers
 ./ocb/roundtrip.sh profile                            # re-record ocb/default.pgo under load, rebuild
 ./ocb/samehost.sh                                     # shared memory vs OTLP/gRPC vs Prometheus
 cpp/check.sh bench                                    # a C++ app's instruments -> the Go receiver
+BENCH_FORKS=2 java/run.sh bench                       # a Java exporter: Dagr vs opentelemetry-java
 ```
 
 `schema.py` is `packed`, not `frozen+packed`, deliberately — frozen is positional and
@@ -773,6 +776,29 @@ writes a region. Deploy it as a **sidecar**: both containers share an
 `emptyDir{medium: Memory}` volume (the copies count against the pod's memory, 90 KB
 each). A DaemonSet collector would need a `hostPath` onto a tmpfs in the app pods, which
 the `restricted` Pod Security level forbids (`spec/38` §7.1, D4).
+
+## A Java exporter: encode is a tie
+
+`java/` encodes OTel Java SDK spans (`SpanData`, what an SDK exporter is handed) into Dagr
+and measures that against opentelemetry-java's own OTLP marshalers on the same 500-span
+batch. Before any timing, `java/run.sh` checks:
+- both OTel marshalers reproduce the fixture's protobuf;
+- the Dagr buffer, restored and turned back into protobuf, equals those same bytes;
+- Go decodes Java's Dagr buffer and re-encodes it to the same 229,280 bytes.
+
+| one export, JMH, 2 forks | µs | allocated |
+|---|---|---|
+| opentelemetry-java, default (`IMMUTABLE_DATA`) | 223.7 | 585 KB |
+| opentelemetry-java, low allocation (`REUSABLE_DATA`) | 567.9 | 48 KB |
+| **Dagr** (spans → value tree → buffer) | **216.4** | 498 KB |
+| Dagr serializer alone | 208.7 | **0** |
+| protobuf-java `writeTo` alone | 214.2 | 323 KB |
+
+So a Java exporter can send Dagr at no cost over OTLP, and nothing more: the serializers
+tie, because both spend their time measuring and copying Java strings as UTF-8 (a Go
+string is already bytes). The case for Dagr in Java is the receiver's lazy reads, as it
+is everywhere else here. `spec/38` §10.3.2 has the profile and the lever (cached key
+bytes).
 
 ## OTAP: Dagr into OpenTelemetry Arrow
 

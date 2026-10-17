@@ -71,7 +71,7 @@ from dagr.dsl import (
     int_val, float_val, bool_val, string_val, b64_val, array_val,
     union_ref_val, ref_val, nil,
 )
-from dagr.config import Cpp, Library, Go, Rust  # Swift, TypeScript, Mojo, Odin, Python
+from dagr.config import Cpp, Java, Library, Go, Rust  # Swift, TypeScript, Mojo, Odin, Python
 
 
 # ENUMS are written as {code: name}, not as a list. The list form auto-indexes from 0,
@@ -897,6 +897,9 @@ library = Library(
         # the two metrics regions from a C++ app; the Go `dagrshm` receiver reads them
         # (spec/38 §10.3.1).
         Cpp(out="cpp/gen", namespace="otlpgen"),
+        # The Java sources (Dagr spec/45): `java/exporter` encodes OTel Java SDK spans into
+        # Dagr, benchmarked against opentelemetry-java's own OTLP marshaler (spec/38 §10.3.2).
+        Java(out="java/gen", package="otlpgen"),
     ],
     wire_format_version=1,
 )

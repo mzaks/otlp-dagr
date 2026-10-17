@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate the Go, Rust and C++ targets from schema.py and refresh the receipt.
+# Regenerate the Go, Rust, C++ and Java targets from schema.py and refresh the receipt.
 #
 #   ./regen.sh            # regenerate
 #   ./regen.sh check      # diff schema.py against the committed receipt, generate nothing
@@ -24,4 +24,8 @@ if [ "$cmd" = "build" ]; then
   ( cd rust/gen && cargo build --release --quiet )
   echo "regen: rust (lazy + arrow) build clean"
   cpp/check.sh
+  JAVAC="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
+  [ -x /opt/homebrew/opt/openjdk/bin/javac ] && [ -z "${JAVA_HOME:-}" ] && JAVAC=/opt/homebrew/opt/openjdk/bin/javac
+  rm -rf java/build/gen-check && "$JAVAC" --release 22 -nowarn -d java/build/gen-check $(find java/gen -name '*.java') 2>&1 | grep -v '^Note' || true
+  [ -d java/build/gen-check/otlpgen ] && echo "regen: java build clean"
 fi

@@ -10,3 +10,6 @@ __pycache__/
 ocb/build/
 ocb/work/
 cpp/build/
+java/gen/
+java/build/
+java/lib/
