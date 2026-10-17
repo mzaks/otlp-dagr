@@ -5758,7 +5758,7 @@
     "java/gen/src/main/java/dagr/runtime/ArrayBase.java": "sha256:bd85cd9711cff1e335d80863f0822452e7635eadb44c5edfb57edf56b527606d",
     "java/gen/src/main/java/dagr/runtime/BF16Array.java": "sha256:4e8214b25c2c200318abe2e32c61ea7a5b6a9842149a487a67076fc4437ea38f",
     "java/gen/src/main/java/dagr/runtime/BoolArray.java": "sha256:d4ab991292bef310cb38421b0a16dad39474fe033e7e606ea54c150477526cf7",
-    "java/gen/src/main/java/dagr/runtime/Builder.java": "sha256:cf029cbc40a79c3ed661b263e2f5cdd8538e79f5f9e261e08d26c3fb05dd1349",
+    "java/gen/src/main/java/dagr/runtime/Builder.java": "sha256:b3a29e938e0dbb8790e7488b1d81d2ed45cb3f626ee8d291f97818c6244a55b9",
     "java/gen/src/main/java/dagr/runtime/BytesArray.java": "sha256:35caa41fe1bfa39f3c60445c096fe83735c76f147796cc6884fb8205a5c38455",
     "java/gen/src/main/java/dagr/runtime/Describer.java": "sha256:14941b5e1a51338876cb883cb350aff591f02a8597d45f66dd774d2370f167e9",
     "java/gen/src/main/java/dagr/runtime/EnumArray.java": "sha256:dba3ce214c0d0743bca3986cd3d0b23da81d2bac839cf6df5d2eefab717f34dd",
@@ -5795,7 +5795,7 @@
     "java/gen/src/main/java/dagr/runtime/U64Array.java": "sha256:8d3177e60f7637328697992094ae19eaef808a2f807e4aa7d573f9d6c7b5bc01",
     "java/gen/src/main/java/dagr/runtime/U8Array.java": "sha256:0aea787c58b557fb45402a4715839c420a45234eedcc98c5b75d6257b8c9aa66",
     "java/gen/src/main/java/dagr/runtime/UnionArrayBase.java": "sha256:4a77a42472811b343c5f5948daf6b610a07ff267e9362c5010526fbf96c42d7c",
-    "java/gen/src/main/java/dagr/runtime/Writer.java": "sha256:e13db93ca778468088151e2e15580afc32da485fabd155e18a0fab5f01678364",
+    "java/gen/src/main/java/dagr/runtime/Writer.java": "sha256:80e5500348cc0866b6a7a95bff7d75be9c7f3bb968d665330e7f48b662370bc5",
     "java/gen/src/main/java/otlpgen/LogRecordLog.java": "sha256:45b7bf587a69fe956c3f46f8a506598f97386669c48584781b3bb7da1e993227",
     "java/gen/src/main/java/otlpgen/MetricLog.java": "sha256:92ca1e648656c4c56792936a56e45ae449138e1a4053ea99e3f7e1946e0a1930",
     "java/gen/src/main/java/otlpgen/MetricsRegion.java": "sha256:d28d3d45ea1b5885afe53d03fee04cdccc465e0a589a965568f72ac4b02668f1",
@@ -5845,7 +5845,7 @@
   },
   "provenance": {
     "command": "dagr build",
-    "generated_at": "2026-10-17T12:11:45.777246+00:00",
+    "generated_at": "2026-10-17T12:42:26.729714+00:00",
     "host": null,
     "tool_version": "dagr 2026.10.1"
   },

@@ -1,5 +1,6 @@
 package otlpdagr;
 
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.trace.SpanContext;
@@ -76,16 +77,29 @@ public final class Fixture {
     add.accept(s);
   }
 
+  // One AttributeKey per name and type, shared by every span of every batch — as
+  // instrumentation declares its keys (`static final AttributeKey<String> HTTP_METHOD = …`).
+  // Encoders may cache per key: opentelemetry-java caches each key's UTF-8 bytes in it.
+  private static final java.util.Map<String, AttributeKey<?>> KEYS = new java.util.concurrent.ConcurrentHashMap<>();
+
+  @SuppressWarnings("unchecked")
+  private static <T> AttributeKey<T> key(String name, java.util.function.Function<String, AttributeKey<T>> make) {
+    return (AttributeKey<T>) KEYS.computeIfAbsent(make.apply(name).getType() + ":" + name, k -> make.apply(name));
+  }
+
+  // Values are FRESH strings in every batch — application data, not constants — so no
+  // encoder sees the same value instance twice across exports.
   private static Attributes attrs(List<KeyValue> kvs) {
     AttributesBuilder b = Attributes.builder();
     for (KeyValue kv : kvs) {
       AnyValue v = kv.getValue();
+      String k = kv.getKey();
       switch (v.getValueCase()) {
-        case STRING_VALUE -> b.put(kv.getKey(), v.getStringValue());
-        case INT_VALUE -> b.put(kv.getKey(), v.getIntValue());
-        case BOOL_VALUE -> b.put(kv.getKey(), v.getBoolValue());
-        case DOUBLE_VALUE -> b.put(kv.getKey(), v.getDoubleValue());
-        default -> throw new IllegalArgumentException("fixture attribute " + kv.getKey() + ": " + v.getValueCase());
+        case STRING_VALUE -> b.put(key(k, AttributeKey::stringKey), new String(v.getStringValue()));
+        case INT_VALUE -> b.put(key(k, AttributeKey::longKey), v.getIntValue());
+        case BOOL_VALUE -> b.put(key(k, AttributeKey::booleanKey), v.getBoolValue());
+        case DOUBLE_VALUE -> b.put(key(k, AttributeKey::doubleKey), v.getDoubleValue());
+        default -> throw new IllegalArgumentException("fixture attribute " + k + ": " + v.getValueCase());
       }
     }
     return b.build();
@@ -103,7 +117,7 @@ public final class Fixture {
             TraceFlags.getDefault(), TraceState.getDefault());
     List<EventData> events = new ArrayList<>();
     for (Span.Event e : s.getEventsList()) {
-      events.add(EventData.create(e.getTimeUnixNano(), e.getName(), attrs(e.getAttributesList())));
+      events.add(EventData.create(e.getTimeUnixNano(), new String(e.getName()), attrs(e.getAttributesList())));
     }
     StatusData status = switch (s.getStatus().getCode()) {
       case STATUS_CODE_OK -> StatusData.ok();
@@ -117,7 +131,7 @@ public final class Fixture {
       case SPAN_KIND_CONSUMER -> SpanKind.CONSUMER;
       default -> SpanKind.INTERNAL;
     };
-    return new FixtureSpan(s.getName(), kind, ctx, parent, status, s.getStartTimeUnixNano(),
+    return new FixtureSpan(new String(s.getName()), kind, ctx, parent, status, s.getStartTimeUnixNano(),
         s.getEndTimeUnixNano(), attrs(s.getAttributesList()), List.copyOf(events), res, scope);
   }
 

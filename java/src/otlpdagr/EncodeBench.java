@@ -27,6 +27,12 @@ import otlpgen.OtlpTraces;
  * encoded request in memory out, every buffer reused across calls. `Check` has proven first
  * that every row produces the same content.
  *
+ * <p>Each call encodes the NEXT of {@value #BATCHES} copies of the batch, whose span names
+ * and attribute values are distinct string instances — as an exporter sees new spans every
+ * export — while attribute keys are shared {@code AttributeKey} constants, as instrumentation
+ * declares them. Encoding one batch over and over would let any per-instance cache (Dagr's
+ * text measure cache, opentelemetry-java's per-key bytes) hit on every value.
+ *
  * <ul>
  *   <li>{@code otelDefault} — opentelemetry-java's OTLP exporter as configured out of the box
  *       (MemoryMode.IMMUTABLE_DATA): a marshaler tree per export, then the bytes;
@@ -45,23 +51,36 @@ import otlpgen.OtlpTraces;
 @Warmup(iterations = 5, time = 1)
 @Measurement(iterations = 5, time = 2)
 public class EncodeBench {
-  List<SpanData> spans;
+  static final int BATCHES = 16;
+  List<SpanData>[] batches;
+  OtlpTraces.TracesData[] values;
+  int next;
   ByteArrayOutputStream bos;
   LowAllocationTraceRequestMarshaler low;
   DagrTraceEncoder dagr;
-  OtlpTraces.TracesData values;
   TracesData message;
   byte[] pbBuf;
 
+  private int turn() {
+    final int i = next;
+    next = (i + 1) % BATCHES;
+    return i;
+  }
+
   @Setup
+  @SuppressWarnings("unchecked")
   public void setup() throws IOException {
     TracesData fixture = TracesData.parseFrom(Files.readAllBytes(Path.of(System.getProperty("otlpdagr.fixture"))));
-    spans = Fixture.spans(fixture);
+    batches = new List[BATCHES];
+    values = new OtlpTraces.TracesData[BATCHES];
+    for (int i = 0; i < BATCHES; i++) {
+      batches[i] = Fixture.spans(fixture);
+      values[i] = DagrTraceEncoder.toValue(batches[i]);
+    }
     bos = new ByteArrayOutputStream(1 << 19);
     low = new LowAllocationTraceRequestMarshaler();
     dagr = new DagrTraceEncoder();
-    values = DagrTraceEncoder.toValue(spans);
-    TraceRequestMarshaler.create(spans).writeBinaryTo(bos);
+    TraceRequestMarshaler.create(batches[0]).writeBinaryTo(bos);
     message = TracesData.parseFrom(bos.toByteArray());   // what the SDK path produces
     pbBuf = new byte[message.getSerializedSize()];
   }
@@ -69,14 +88,14 @@ public class EncodeBench {
   @Benchmark
   public int otelDefault() throws IOException {
     bos.reset();
-    TraceRequestMarshaler.create(spans).writeBinaryTo(bos);
+    TraceRequestMarshaler.create(batches[turn()]).writeBinaryTo(bos);
     return bos.size();
   }
 
   @Benchmark
   public int otelLowAllocation() throws IOException {
     bos.reset();
-    low.initialize(spans);
+    low.initialize(batches[turn()]);
     try {
       low.writeBinaryTo(bos);
     } finally {
@@ -87,12 +106,12 @@ public class EncodeBench {
 
   @Benchmark
   public long dagr() {
-    return dagr.encode(spans).byteSize();
+    return dagr.encode(batches[turn()]).byteSize();
   }
 
   @Benchmark
   public long dagrBuildOnly() {
-    return dagr.build(values).byteSize();
+    return dagr.build(values[turn()]).byteSize();
   }
 
   @Benchmark

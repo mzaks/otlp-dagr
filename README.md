@@ -786,19 +786,23 @@ batch. Before any timing, `java/run.sh` checks:
 - the Dagr buffer, restored and turned back into protobuf, equals those same bytes;
 - Go decodes Java's Dagr buffer and re-encodes it to the same 229,280 bytes.
 
+Each call encodes the next of 16 copies of the batch, with fresh values and shared
+`AttributeKey`s, as an exporter sees them.
+
 | one export, JMH, 2 forks | µs | allocated |
 |---|---|---|
-| opentelemetry-java, default (`IMMUTABLE_DATA`) | 223.7 | 585 KB |
-| opentelemetry-java, low allocation (`REUSABLE_DATA`) | 567.9 | 48 KB |
-| **Dagr** (spans → value tree → buffer) | **216.4** | 498 KB |
-| Dagr serializer alone | 208.7 | **0** |
-| protobuf-java `writeTo` alone | 214.2 | 323 KB |
+| opentelemetry-java, default (`IMMUTABLE_DATA`) | 217.0 | 585 KB |
+| opentelemetry-java, low allocation (`REUSABLE_DATA`) | 562.3 | 48 KB |
+| **Dagr** (spans → value tree → buffer) | **212.9** | 467 KB |
+| Dagr serializer alone | **158.3** | **0** |
+| protobuf-java `writeTo` alone | 207.3 | 323 KB |
 
-So a Java exporter can send Dagr at no cost over OTLP, and nothing more: the serializers
-tie, because both spend their time measuring and copying Java strings as UTF-8 (a Go
-string is already bytes). The case for Dagr in Java is the receiver's lazy reads, as it
-is everywhere else here. `spec/38` §10.3.2 has the profile and the lever (cached key
-bytes).
+A Java exporter can send Dagr at no cost over OTLP, and not much less. The serializer is
+1.31× protobuf-java's: Dagr's Java runtime caches the UTF-8 measure of short strings it has
+seen, and the attribute keys are the same instances every time (Dagr `spec/45` §5.2.1). Before
+that cache, the serializer cost 210 µs. Building the value tree from `SpanData` is now the
+bigger cost. The case for Dagr in Java is still the receiver's lazy reads, as it is
+everywhere else here. `spec/38` §10.3.2.
 
 ## OTAP: Dagr into OpenTelemetry Arrow
 
