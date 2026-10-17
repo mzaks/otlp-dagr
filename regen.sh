@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate the Go and Rust targets from schema.py and refresh the receipt.
+# Regenerate the Go, Rust and C++ targets from schema.py and refresh the receipt.
 #
 #   ./regen.sh            # regenerate
 #   ./regen.sh check      # diff schema.py against the committed receipt, generate nothing
@@ -23,4 +23,5 @@ if [ "$cmd" = "build" ]; then
   echo "regen: go build + vet clean"
   ( cd rust/gen && cargo build --release --quiet )
   echo "regen: rust (lazy + arrow) build clean"
+  cpp/check.sh
 fi

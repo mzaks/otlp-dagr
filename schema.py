@@ -71,7 +71,7 @@ from dagr.dsl import (
     int_val, float_val, bool_val, string_val, b64_val, array_val,
     union_ref_val, ref_val, nil,
 )
-from dagr.config import Library, Go, Rust  # Swift, TypeScript, Mojo, Odin, Python
+from dagr.config import Cpp, Library, Go, Rust  # Swift, TypeScript, Mojo, Odin, Python
 
 
 # ENUMS are written as {code: name}, not as a list. The list form auto-indexes from 0,
@@ -893,6 +893,10 @@ library = Library(
         # id. That is the input to the OTAP bridge (spec/38 §9, §14 step 8); it is not
         # the OTAP record-batch schema yet.
         Rust(out="rust/gen", features=["arrow"]),
+        # The C++ headers (Dagr spec/41): `cpp/shmdirect` records direct instruments into
+        # the two metrics regions from a C++ app; the Go `dagrshm` receiver reads them
+        # (spec/38 §10.3.1).
+        Cpp(out="cpp/gen", namespace="otlpgen"),
     ],
     wire_format_version=1,
 )

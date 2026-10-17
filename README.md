@@ -20,7 +20,7 @@ buffer is the file rather than the heap.
 schema.py          the source of truth — transpiled from proto/otlp/, then hand-owned
 dagr.lock.json     the generation receipt (committed; `./regen.sh check` diffs it)
 proto/otlp/        vendored opentelemetry-proto (Apache-2.0, see PROVENANCE.txt)
-regen.sh           dagr build + gofmt/vet
+regen.sh           dagr build + gofmt/vet + the Rust and C++ builds
 go/                see go/README.md
   spool/           the spool file: append, read forward/newest-first, check the tail
   exporter/        dagrfileexporter — pdata in, one Dagr record per batch
@@ -35,6 +35,8 @@ go/                see go/README.md
   cmd/shmbench/    the same load over shm / OTLP/gRPC / Prometheus (samehost.sh)
 ocb/               collector builder manifest, pipeline configs, roundtrip.sh,
                    samehost.sh, default.pgo (the collector's PGO profile)
+cpp/shmdirect/     direct instruments from C++ into the same regions (check.sh: the Go
+                   receiver reads a C++ process)
 rust/otap/         Dagr -> OTAP (OpenTelemetry Arrow), gated by otel-arrow's decoders
 rust/restore-bench/ eager restore (the generated arena) vs prost's decode, same batches
 ```
@@ -49,6 +51,7 @@ cd go && go test ./store -bench . -benchtime 2s        # the store's numbers
   (cd rust/restore-bench && cargo run --release)      # eager restore vs protobuf, every signal
 ./ocb/roundtrip.sh profile                            # re-record ocb/default.pgo under load, rebuild
 ./ocb/samehost.sh                                     # shared memory vs OTLP/gRPC vs Prometheus
+cpp/check.sh bench                                    # a C++ app's instruments -> the Go receiver
 ```
 
 `schema.py` is `packed`, not `frozen+packed`, deliberately — frozen is positional and
@@ -748,6 +751,22 @@ records it (`Values.shards`) so the reader can check every copy.
 The pin that finds the P costs 1.5 ns when nothing contends, and the receiver's merge
 34 µs a poll for 16 copies of 500 streams; end to end the benchmark app above (one
 goroutine) goes from 0.103 s to 0.106 s. `spec/38` §7.1.1.
+
+**From C++ too** (`cpp/shmdirect`, header-only over the generated C++ overlays): the same
+two files, the same layout and create-then-rename protocol, so the `dagrshm` receiver
+reads a C++ app exactly as it reads a Go one. `cpp/check.sh` starts a C++ process that
+registers every instrument kind with typed attributes, records from 8 threads into 4
+copies, and stays alive while the Go receiver's tests read it — every total exact, a
+second poll sees the live process's next add, its shutdown removes both files — once
+plain and once under ThreadSanitizer. C++ has no portable "which core", so a thread takes
+a copy on its first recording, round robin, and keeps it:
+
+| C++, 16 hardware threads | 1 thread | 16 threads, one stream |
+|---|---|---|
+| counter `add`, one copy | 1.8 ns | 58 ns |
+| counter `add`, a copy per thread | 1.8 ns | **0.19 ns** |
+| histogram `record`, one copy | 5.0 ns | 610 ns |
+| histogram `record`, a copy per thread | 6.3 ns | **0.57 ns** |
 
 Delivery waits for the receiver's poll, values are cumulative only, and one process
 writes a region. Deploy it as a **sidecar**: both containers share an
